@@ -56,12 +56,24 @@ class ToolPolicyConfig(BaseModel):
     allow_safe_commands: bool = False  # For shell: allow safe commands without HITL
 
 
+class HttpConfig(BaseModel):
+    """HTTP client configuration."""
+    allow_domains: List[str] = Field(default_factory=list, description="Allowlist of domains (empty = allow all non-blocked)")
+    block_domains: List[str] = Field(default_factory=list, description="Blocklist of domains")
+    block_private_ips: bool = Field(True, description="Block requests to private/loopback/link-local IP ranges (SSRF protection)")
+    block_metadata_endpoints: bool = Field(True, description="Block cloud metadata endpoints (e.g. 169.254.169.254)")
+    max_response_size_kb: int = Field(1024, description="Maximum response body size in KB")
+    default_timeout: int = Field(30, description="Default request timeout in seconds")
+    max_timeout: int = Field(120, description="Maximum allowed timeout in seconds")
+
+
 class ToolsConfig(BaseModel):
     """Tools configuration."""
     defaults: ToolPolicyConfig = Field(default_factory=lambda: ToolPolicyConfig(workspace_override="hitl"))
     fs: Dict[str, ToolPolicyConfig] = Field(default_factory=dict)
     workspace: Dict[str, ToolPolicyConfig] = Field(default_factory=dict)
     shell: Dict[str, ToolPolicyConfig] = Field(default_factory=dict)
+    http: Dict[str, ToolPolicyConfig] = Field(default_factory=dict)
 
 
 class Config(BaseModel):
@@ -73,6 +85,7 @@ class Config(BaseModel):
     hitl: HITLConfig = Field(default_factory=HITLConfig)
     audit: AuditConfig = Field(default_factory=AuditConfig)
     tools: ToolsConfig = Field(default_factory=ToolsConfig)
+    http: HttpConfig = Field(default_factory=HttpConfig)
 
 
 def load_config(config_path: str = "config.yaml") -> Config:

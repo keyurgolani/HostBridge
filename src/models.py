@@ -393,6 +393,38 @@ class DockerActionResponse(BaseModel):
     message: str = Field(..., description="Result message")
 
 
+# Workspace secrets models
+
+class WorkspaceSecretsListResponse(BaseModel):
+    """Response model for workspace_secrets_list tool."""
+    keys: list[str] = Field(..., description="List of configured secret key names (values not exposed)")
+    count: int = Field(..., description="Total number of configured secrets")
+    secrets_file: str = Field(..., description="Path to the secrets file")
+
+
+# HTTP request models
+
+class HttpRequestRequest(BaseModel):
+    """Request model for http_request tool."""
+    url: str = Field(..., description="URL to request")
+    method: str = Field("GET", description="HTTP method: GET, POST, PUT, PATCH, DELETE, HEAD")
+    headers: Optional[dict[str, str]] = Field(None, description="Request headers (use {{secret:KEY}} for sensitive values)")
+    body: Optional[str] = Field(None, description="Request body (for POST/PUT/PATCH)")
+    json_body: Optional[dict] = Field(None, description="JSON request body (for POST/PUT/PATCH, mutually exclusive with body)")
+    timeout: int = Field(30, description="Request timeout in seconds")
+    follow_redirects: bool = Field(True, description="Follow HTTP redirects")
+
+
+class HttpRequestResponse(BaseModel):
+    """Response model for http_request tool."""
+    status_code: int = Field(..., description="HTTP status code")
+    headers: dict[str, str] = Field(..., description="Response headers")
+    body: str = Field(..., description="Response body as text")
+    url: str = Field(..., description="Final URL after redirects")
+    duration_ms: int = Field(..., description="Request duration in milliseconds")
+    content_type: Optional[str] = Field(None, description="Response content type")
+
+
 # Error response model
 
 class ErrorResponse(BaseModel):

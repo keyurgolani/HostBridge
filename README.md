@@ -45,12 +45,12 @@ Built-in admin dashboard provides human oversight, HITL (Human-in-the-Loop) appr
 - **Admin Dashboard:** Premium UI with real-time updates
 - **Audit Logging:** Complete execution history
 - **Policy Engine:** Allow/block/HITL rules per tool
-- **Secret Management:** Secure secret resolution with template syntax
+- **Secret Management:** Secure secret resolution with `{{secret:KEY}}` template syntax
+- **HTTP Client:** Make outbound HTTP requests with SSRF protection, domain filtering, and secret injection
 - **WebSocket Support:** Real-time notifications
 
 ### 🚧 Coming Soon
 
-- HTTP client with SSRF protection
 - Knowledge graph memory system
 - DAG-based plan execution
 
@@ -196,6 +196,47 @@ LOG_LEVEL=INFO
 HITL_TTL_SECONDS=300
 ```
 
+### Secrets File
+
+Create `secrets.env` with your sensitive values:
+
+```bash
+# secrets.env — mounted read-only into the container
+GITHUB_TOKEN=ghp_your_token_here
+DB_PASSWORD=super_secret
+API_KEY=your_api_key
+```
+
+Reference secrets in any tool parameter using `{{secret:KEY}}` syntax:
+
+```bash
+# Use a secret in an HTTP Authorization header
+curl -X POST http://localhost:8080/api/tools/http/request \
+  -H "Content-Type: application/json" \
+  -d '{
+    "url": "https://api.github.com/user",
+    "method": "GET",
+    "headers": {"Authorization": "Bearer {{secret:GITHUB_TOKEN}}"}
+  }'
+
+# List loaded secret key names (no values)
+curl -X POST http://localhost:8080/api/tools/workspace/secrets_list
+```
+
+### HTTP Configuration (`config.yaml`)
+
+```yaml
+http:
+  block_private_ips: true           # Block RFC 1918 / loopback ranges
+  block_metadata_endpoints: true    # Block 169.254.169.254 and similar
+  allow_domains: []                 # Empty = allow all (add entries to whitelist)
+  block_domains:                    # Always blocked regardless of allowlist
+    - "*.internal.example.com"
+  max_response_size_kb: 1024        # Truncate responses larger than this
+  default_timeout: 30               # Seconds
+  max_timeout: 120                  # Hard cap regardless of request value
+```
+
 ### Docker Compose
 
 ```yaml
@@ -212,6 +253,7 @@ services:
       - ./data:/data
       - ./secrets.env:/secrets/secrets.env:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro  # For Docker tools
+      - ./config.yaml:/app/config.yaml:ro
 ```
 
 ---
@@ -240,6 +282,7 @@ services:
   - Full HITL Queue management with detailed request information
   - Complete Audit Log with search, filter, and export
   - Detailed System Health with performance metrics
+  - Secrets Management: list loaded key names, trigger hot reload
 - **Premium UI:** 
   - Glassmorphism design with 3D animations
   - Aurora backgrounds and floating particles
@@ -315,10 +358,19 @@ http://localhost:8080/admin/
 ### Workspace
 
 - `workspace_info` - Get workspace configuration and disk usage
+- `workspace_secrets_list` - List loaded secret key names (no values exposed)
+
+### HTTP
+
+- `http_request` - Make outbound HTTP requests
+  - Domain allowlist and blocklist via `config.yaml`
+  - SSRF protection: blocks private IP ranges (10.x, 192.168.x, 172.16-31.x) and cloud metadata endpoints
+  - Secret template injection: use `{{secret:KEY}}` in headers, URL, or body
+  - Configurable timeout (default 30s, max 120s)
+  - Response truncation and content-type handling
 
 ### Coming Soon
 
-- `http_request` - HTTP client with SSRF protection
 - `memory_*` - Knowledge graph storage and retrieval
 - `plan_*` - DAG-based multi-step execution
 
@@ -332,9 +384,11 @@ http://localhost:8080/admin/
 2. **Workspace Boundary:** Path resolution + validation
 3. **Tool Policies:** Allow/block/HITL per tool
 4. **HITL Approval:** Human review of requests
-5. **Secret Isolation:** Secrets never sent to LLM
-6. **Admin Auth:** Password-protected dashboard
-7. **Audit Log:** Complete request/response logging
+5. **Secret Isolation:** Secrets resolved server-side; templates (`{{secret:KEY}}`) appear in audit logs, never resolved values
+6. **SSRF Protection:** HTTP client blocks private IPs, RFC 1918 ranges, and cloud metadata endpoints (169.254.169.254)
+7. **Domain Filtering:** Per-host HTTP allowlist and blocklist
+8. **Admin Auth:** Password-protected dashboard
+9. **Audit Log:** Complete request/response logging
 
 ### Best Practices
 
@@ -359,8 +413,11 @@ http://localhost:8080/admin/
 │   ├── audit.py           # Audit logger
 │   ├── policy.py          # Policy engine
 │   ├── workspace.py       # Path resolution
+│   ├── secrets.py         # Secret manager (template resolver)
 │   ├── admin_api.py       # Admin API
 │   └── tools/             # Tool implementations
+│       ├── http_tools.py  # HTTP client with SSRF protection
+│       └── ...
 ├── admin/                 # React dashboard
 │   ├── src/
 │   │   ├── pages/         # Dashboard pages
@@ -467,9 +524,20 @@ npm run dev
 - Docker socket integration with read-only mount
 - Comprehensive test coverage (20 unit tests, 7 integration tests)
 
+### ✅ Secret Management & HTTP Client (Complete)
+- `{{secret:KEY}}` template syntax resolved server-side across all tool parameters
+- Secrets file loader (`.env` format) with hot reload via admin API
+- Secret masking in audit logs (templates stored, not resolved values)
+- Deep-copy parameter handling: originals preserved for audit, resolved copy for execution
+- `workspace_secrets_list` tool — exposes key names only, never values
+- Admin dashboard secrets page: list keys, trigger reload
+- `http_request` tool with async `httpx` client
+- SSRF protection: private IPs, RFC 1918 ranges, cloud metadata endpoints blocked
+- Domain allowlist and blocklist with wildcard subdomain support (`*.example.com`)
+- Configurable timeout, response truncation, follow-redirects
+- Comprehensive test coverage (22 secrets tests, 32 HTTP tests)
+
 ### 📋 Upcoming Features
-- Secret management with template resolution
-- HTTP client with SSRF protection
 - Memory system (knowledge graph)
 - Plan execution (DAG-based workflows)
 - Dashboard enhancements
@@ -539,13 +607,15 @@ Built following the design principles from:
 
 The project includes comprehensive test coverage:
 
-- **193 tests** covering all functionality
+- **229 tests** covering all functionality
 - **Unit tests** for individual components
 - **Integration tests** for API endpoints
 - **MCP protocol tests** for Streamable HTTP transport
 - **HITL workflow tests** for approval system
-- **Security tests** for workspace boundaries
+- **Security tests** for workspace boundaries and SSRF protection
 - **Git tools tests** (27 unit tests, 12 integration tests)
 - **Docker tools tests** (20 unit tests, 7 integration tests)
+- **Secrets tests** (22 tests: loading, template resolution, masking)
+- **HTTP tools tests** (32 tests: SSRF detection, domain filtering, API integration)
 
 All tests pass with zero warnings and clean exit.

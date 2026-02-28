@@ -18,11 +18,13 @@ from src.workspace import WorkspaceManager, SecurityError
 from src.audit import AuditLogger
 from src.policy import PolicyEngine
 from src.hitl import HITLManager
+from src.secrets import SecretManager, SecretNotFoundError
 from src.tools.fs_tools import FilesystemTools
 from src.tools.workspace_tools import WorkspaceTools
 from src.tools.shell_tools import ShellTools
 from src.tools.git_tools import GitTools
 from src.tools.docker_tools import DockerTools
+from src.tools.http_tools import HttpTools, SSRFError, DomainBlockedError
 from src.models import (
     FsReadRequest,
     FsReadResponse,
@@ -67,6 +69,9 @@ from src.models import (
     DockerLogsResponse,
     DockerActionRequest,
     DockerActionResponse,
+    WorkspaceSecretsListResponse,
+    HttpRequestRequest,
+    HttpRequestResponse,
     ErrorResponse,
 )
 
@@ -82,12 +87,16 @@ audit_logger = AuditLogger(db)
 policy_engine = PolicyEngine(config)
 hitl_manager = HITLManager(db, config.hitl.default_ttl_seconds)
 
+# Initialize secrets manager
+secret_manager = SecretManager(config.secrets.file)
+
 # Initialize tools
 fs_tools = FilesystemTools(workspace_manager)
-workspace_tools = WorkspaceTools(workspace_manager)
+workspace_tools = WorkspaceTools(workspace_manager, secret_manager)
 shell_tools = ShellTools(workspace_manager)
 git_tools = GitTools(workspace_manager)
 docker_tools = DockerTools()
+http_tools = HttpTools(config.http)
 
 
 @asynccontextmanager
@@ -195,6 +204,33 @@ async def value_error_handler(request: Request, exc: ValueError):
     )
 
 
+@app.exception_handler(TimeoutError)
+async def timeout_error_handler(request: Request, exc: TimeoutError):
+    """Handle timeout errors (e.g. HITL timeout)."""
+    logger.warning("timeout_error", error=str(exc), path=request.url.path)
+    return JSONResponse(
+        status_code=status.HTTP_408_REQUEST_TIMEOUT,
+        content=ErrorResponse(
+            error_type="timeout",
+            message=str(exc),
+            suggestion="Retry the request or contact the administrator",
+        ).model_dump(),
+    )
+
+
+@app.exception_handler(ConnectionError)
+async def connection_error_handler(request: Request, exc: ConnectionError):
+    """Handle HTTP connection errors."""
+    logger.warning("connection_error", error=str(exc), path=request.url.path)
+    return JSONResponse(
+        status_code=status.HTTP_502_BAD_GATEWAY,
+        content=ErrorResponse(
+            error_type="connection_error",
+            message=str(exc),
+        ).model_dump(),
+    )
+
+
 @app.exception_handler(Exception)
 async def general_error_handler(request: Request, exc: Exception):
     """Handle general errors."""
@@ -226,46 +262,56 @@ async def execute_tool(
     hitl_reason: Optional[str] = None,
 ):
     """Execute a tool with policy enforcement and audit logging.
-    
+
+    Pipeline order:
+      1. Policy check (runs on original/template params)
+      2. HITL gate (if required)
+      3. Tool execution (tool_func is expected to have already received a resolved request)
+      4. Audit log (records *original* template params, not resolved values)
+
+    Secret template resolution ({{secret:KEY}} → actual values) happens at the
+    endpoint level via ``resolve_request_secrets()`` BEFORE the execute_tool call.
+    The ``params`` dict passed here must contain the original (template) values so
+    that policy patterns and audit logs see what the caller intended, not the
+    resolved secrets.
+
     Args:
         tool_category: Tool category
         tool_name: Tool name
-        params: Tool parameters
-        tool_func: Tool function to execute
+        params: Tool parameters with original template strings (for policy/audit)
+        tool_func: Tool function to execute (closure bound to a *resolved* request)
         protocol: Protocol used (openapi or mcp)
         force_hitl: Force HITL approval regardless of policy
         hitl_reason: Reason for HITL requirement
-        
+
     Returns:
         Tool execution result
     """
     start_time = time.time()
-    
-    # Policy check (skip if force_hitl is True)
+
+    # --- 1. Policy check on ORIGINAL (template) params ---
     if force_hitl:
         decision = "hitl"
         reason = hitl_reason or "Requires approval"
     else:
         decision, reason = policy_engine.evaluate(tool_category, tool_name, params)
-    
+
     if decision == "block":
-        # Log blocked execution
         await audit_logger.log_execution(
             tool_name=tool_name,
             tool_category=tool_category,
             protocol=protocol,
-            request_params=params,
+            request_params=params,  # original templates recorded
             status="blocked",
             error_message=reason,
         )
-        
         raise SecurityError(f"Operation blocked: {reason}")
-    
-    # HITL handling
+
+    # --- 2. HITL gate ---
+    hitl_request_id = None
     if decision == "hitl":
         logger.info("hitl_required", tool=f"{tool_category}_{tool_name}", reason=reason)
-        
-        # Create HITL request
+
         hitl_request = await hitl_manager.create_request(
             tool_name=tool_name,
             tool_category=tool_category,
@@ -273,12 +319,11 @@ async def execute_tool(
             request_context={"protocol": protocol},
             policy_rule_matched=reason,
         )
-        
-        # Wait for decision (this blocks the HTTP connection)
+        hitl_request_id = hitl_request.id
+
         decision_result = await hitl_manager.wait_for_decision(hitl_request.id)
-        
+
         if decision_result == "rejected":
-            # Log rejected execution
             await audit_logger.log_execution(
                 tool_name=tool_name,
                 tool_category=tool_category,
@@ -286,15 +331,13 @@ async def execute_tool(
                 request_params=params,
                 status="hitl_rejected",
                 error_message="Operation rejected by administrator",
-                hitl_request_id=hitl_request.id,
+                hitl_request_id=hitl_request_id,
             )
-            
             raise SecurityError(
                 "Operation not permitted. The request was reviewed and rejected."
             )
-        
+
         elif decision_result == "expired":
-            # Log expired execution
             await audit_logger.log_execution(
                 tool_name=tool_name,
                 tool_category=tool_category,
@@ -302,50 +345,79 @@ async def execute_tool(
                 request_params=params,
                 status="hitl_expired",
                 error_message="Operation timed out waiting for approval",
-                hitl_request_id=hitl_request.id,
+                hitl_request_id=hitl_request_id,
             )
-            
             raise TimeoutError(
                 "Operation timed out waiting for processing. Please try again later."
             )
-        
-        # If approved, continue with execution
+
         logger.info("hitl_approved_executing", tool=f"{tool_category}_{tool_name}")
-    
-    # Execute tool
+
+    # --- 3. Execute tool ---
     try:
         result = await tool_func()
         duration_ms = int((time.time() - start_time) * 1000)
-        
-        # Log successful execution
+
+        # --- 5. Audit log: record ORIGINAL template params (not resolved) ---
         await audit_logger.log_execution(
             tool_name=tool_name,
             tool_category=tool_category,
             protocol=protocol,
-            request_params=params,
+            request_params=params,  # templates, not resolved values
             response_body=result.model_dump() if hasattr(result, "model_dump") else result,
             status="success" if decision != "hitl" else "hitl_approved",
             duration_ms=duration_ms,
             workspace_dir=workspace_manager.base_dir,
+            hitl_request_id=hitl_request_id,
         )
-        
+
         return result
-    
+
+    except (SecurityError, SecretNotFoundError, SSRFError, DomainBlockedError):
+        raise
     except Exception as e:
         duration_ms = int((time.time() - start_time) * 1000)
-        
-        # Log failed execution
+        # Mask any leaked secret values from the error message before logging
+        safe_error = secret_manager.mask_value(str(e))
         await audit_logger.log_execution(
             tool_name=tool_name,
             tool_category=tool_category,
             protocol=protocol,
-            request_params=params,
+            request_params=params,  # original templates
             status="error",
             duration_ms=duration_ms,
-            error_message=str(e),
+            error_message=safe_error,
+            hitl_request_id=hitl_request_id,
         )
-        
         raise
+
+
+def resolve_request_secrets(request):
+    """Resolve {{secret:KEY}} templates in a pydantic request model.
+
+    Creates a deep copy of the request dict with all template strings replaced
+    by their actual secret values, then constructs a new model of the same type.
+
+    The original ``request`` object is NOT mutated — callers should pass the
+    ORIGINAL params dict to ``execute_tool`` for audit/policy, while passing
+    the resolved model to the tool function closure.
+
+    Args:
+        request: Any pydantic BaseModel instance (request model)
+
+    Returns:
+        New instance of the same model class with all templates resolved
+
+    Raises:
+        ValueError (wrapping SecretNotFoundError): If a key is not found
+    """
+    if not secret_manager.has_templates(request.model_dump()):
+        return request  # Nothing to resolve — return original
+    try:
+        resolved_dict = secret_manager.resolve_params(request.model_dump())
+        return type(request)(**resolved_dict)
+    except SecretNotFoundError as exc:
+        raise ValueError(str(exc)) from exc
 
 
 # Filesystem tools - Root app
@@ -469,6 +541,153 @@ async def workspace_info_sub() -> WorkspaceInfoResponse:
         "info",
         {},
         lambda: workspace_tools.info(),
+    )
+
+
+# workspace_secrets_list endpoints
+@app.post(
+    "/api/tools/workspace/secrets/list",
+    operation_id="workspace_secrets_list",
+    summary="List Configured Secrets",
+    description="""List the names (keys) of all configured secrets.
+
+Secret VALUES are never exposed — only their names are returned so you
+know which keys are available for use as {{secret:KEY}} templates in
+tool parameters (headers, environment variables, etc.).
+
+Use this tool to:
+- Discover available secret keys before using them in requests
+- Verify that a required secret is configured
+
+No parameters required.""",
+    response_model=WorkspaceSecretsListResponse,
+    tags=["workspace"],
+)
+async def workspace_secrets_list_root() -> WorkspaceSecretsListResponse:
+    """List configured secret keys (root app endpoint)."""
+    return await execute_tool(
+        "workspace",
+        "secrets_list",
+        {},
+        lambda: _workspace_secrets_list(),
+    )
+
+
+@workspace_app.post(
+    "/secrets/list",
+    operation_id="workspace_secrets_list",
+    summary="List Configured Secrets",
+    description="""List the names (keys) of all configured secrets.
+
+Secret VALUES are never exposed — only their names are returned so you
+know which keys are available for use as {{secret:KEY}} templates in
+tool parameters (headers, environment variables, etc.).
+
+Use this tool to:
+- Discover available secret keys before using them in requests
+- Verify that a required secret is configured
+
+No parameters required.""",
+    response_model=WorkspaceSecretsListResponse,
+    tags=["workspace"],
+)
+async def workspace_secrets_list_sub() -> WorkspaceSecretsListResponse:
+    """List configured secret keys (sub-app endpoint)."""
+    return await execute_tool(
+        "workspace",
+        "secrets_list",
+        {},
+        lambda: _workspace_secrets_list(),
+    )
+
+
+async def _workspace_secrets_list() -> WorkspaceSecretsListResponse:
+    """Internal helper to build the secrets list response."""
+    import asyncio
+    # Run synchronous call in executor to keep async path clean
+    keys = secret_manager.list_keys()
+    return WorkspaceSecretsListResponse(
+        keys=keys,
+        count=len(keys),
+        secrets_file=str(secret_manager.secrets_file),
+    )
+
+
+# http_request endpoints
+
+# Create http sub-app
+http_app = FastAPI(
+    title="HostBridge — HTTP Tools",
+    description="HTTP client with SSRF protection for HostBridge",
+    version="0.1.0",
+)
+
+
+@app.post(
+    "/api/tools/http/request",
+    operation_id="http_request",
+    summary="Make HTTP Request",
+    description="""Make an HTTP request to an external URL.
+
+Supported methods: GET, POST, PUT, PATCH, DELETE, HEAD
+
+Use {{secret:KEY}} syntax in headers or body values to inject secrets
+without exposing them in the request parameters or audit logs.
+
+Security protections:
+- Private/reserved IP addresses are blocked (SSRF protection)
+- Cloud metadata endpoints (169.254.169.254, etc.) are blocked
+- Domain allowlist/blocklist enforced from configuration
+- Response body is truncated at the configured size limit
+
+Required: url
+Optional: method (default: GET), headers, body, json_body, timeout (max 120s), follow_redirects""",
+    response_model=HttpRequestResponse,
+    tags=["http"],
+)
+async def http_request_root(request: HttpRequestRequest) -> HttpRequestResponse:
+    """Make HTTP request (root app endpoint)."""
+    # Resolve {{secret:KEY}} templates → execution uses resolved request;
+    # execute_tool receives original params dict for policy/audit logging.
+    resolved = resolve_request_secrets(request)
+    return await execute_tool(
+        "http",
+        "request",
+        request.model_dump(),
+        lambda: http_tools.request(resolved),
+    )
+
+
+@http_app.post(
+    "/request",
+    operation_id="http_request",
+    summary="Make HTTP Request",
+    description="""Make an HTTP request to an external URL.
+
+Supported methods: GET, POST, PUT, PATCH, DELETE, HEAD
+
+Use {{secret:KEY}} syntax in headers or body values to inject secrets
+without exposing them in the request parameters or audit logs.
+
+Security protections:
+- Private/reserved IP addresses are blocked (SSRF protection)
+- Cloud metadata endpoints (169.254.169.254, etc.) are blocked
+- Domain allowlist/blocklist enforced from configuration
+- Response body is truncated at the configured size limit
+
+Required: url
+Optional: method (default: GET), headers, body, json_body, timeout (max 120s), follow_redirects""",
+    response_model=HttpRequestResponse,
+    tags=["http"],
+)
+async def http_request_sub(request: HttpRequestRequest) -> HttpRequestResponse:
+    """Make HTTP request (sub-app endpoint)."""
+    resolved = resolve_request_secrets(request)
+    return await execute_tool(
+        "http",
+        "request",
+        request.model_dump(),
+        lambda: http_tools.request(resolved),
     )
 
 
@@ -854,35 +1073,38 @@ async def shell_execute_root(request: ShellExecuteRequest) -> ShellExecuteRespon
     """Execute shell command (root app endpoint)."""
     # Check command safety for policy
     is_safe, reason = shell_tools._check_command_safety(request.command)
-    
+
     # Evaluate policy with safety check
     decision, policy_reason = policy_engine.evaluate_shell_command(
         request.command,
         is_safe,
         reason,
     )
-    
+
     # Handle policy decision
     if decision == "block":
         raise SecurityError(policy_reason or "Command execution blocked by policy")
-    
+
+    # Resolve {{secret:KEY}} templates in env vars (originals preserved for audit)
+    resolved = resolve_request_secrets(request)
+
     # Execute with HITL if needed
     if decision == "hitl":
         return await execute_tool(
             "shell",
             "execute",
             request.model_dump(),
-            lambda: shell_tools.execute(request),
+            lambda: shell_tools.execute(resolved),
             force_hitl=True,
             hitl_reason=policy_reason or reason,
         )
-    
+
     # Execute normally
     return await execute_tool(
         "shell",
         "execute",
         request.model_dump(),
-        lambda: shell_tools.execute(request),
+        lambda: shell_tools.execute(resolved),
     )
 
 
@@ -924,35 +1146,38 @@ async def shell_execute_sub(request: ShellExecuteRequest) -> ShellExecuteRespons
     """Execute shell command (sub-app endpoint)."""
     # Check command safety for policy
     is_safe, reason = shell_tools._check_command_safety(request.command)
-    
+
     # Evaluate policy with safety check
     decision, policy_reason = policy_engine.evaluate_shell_command(
         request.command,
         is_safe,
         reason,
     )
-    
+
     # Handle policy decision
     if decision == "block":
         raise SecurityError(policy_reason or "Command execution blocked by policy")
-    
+
+    # Resolve {{secret:KEY}} templates in env vars (originals preserved for audit)
+    resolved = resolve_request_secrets(request)
+
     # Execute with HITL if needed
     if decision == "hitl":
         return await execute_tool(
             "shell",
             "execute",
             request.model_dump(),
-            lambda: shell_tools.execute(request),
+            lambda: shell_tools.execute(resolved),
             force_hitl=True,
             hitl_reason=policy_reason or reason,
         )
-    
+
     # Execute normally
     return await execute_tool(
         "shell",
         "execute",
         request.model_dump(),
-        lambda: shell_tools.execute(request),
+        lambda: shell_tools.execute(resolved),
     )
 
 
@@ -1769,6 +1994,7 @@ app.mount("/tools/workspace", workspace_app)
 app.mount("/tools/shell", shell_app)
 app.mount("/tools/git", git_app)
 app.mount("/tools/docker", docker_app)
+app.mount("/tools/http", http_app)
 
 
 # ============================================================================

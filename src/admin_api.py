@@ -113,26 +113,26 @@ async def get_audit_logs(
 async def get_system_health(session_token: str = Depends(require_auth)):
     """Get system health metrics."""
     from src.main import db, hitl_manager
-    
+
     # Calculate uptime
     from src.main import app
     start_time = getattr(app.state, 'start_time', time.time())
     uptime = int(time.time() - start_time)
-    
+
     # Get pending HITL count
     pending_hitl = len(hitl_manager.get_pending_requests())
-    
+
     # Get total tools executed from audit log
     cursor = await db.connection.execute(
         "SELECT COUNT(*) as count FROM audit_log"
     )
     row = await cursor.fetchone()
     tools_executed = row["count"] if row else 0
-    
+
     # Calculate error rate
     cursor = await db.connection.execute(
         """
-        SELECT 
+        SELECT
             COUNT(*) as total,
             SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) as errors
         FROM audit_log
@@ -143,10 +143,54 @@ async def get_system_health(session_token: str = Depends(require_auth)):
     total = row["total"] if row and row["total"] else 0
     errors = row["errors"] if row and row["errors"] else 0
     error_rate = errors / total if total > 0 else 0.0
-    
+
     return SystemHealthResponse(
         uptime=uptime,
         pending_hitl=pending_hitl,
         tools_executed=tools_executed,
         error_rate=error_rate,
     )
+
+
+# ---------------------------------------------------------------------------
+# Secrets management endpoints
+# ---------------------------------------------------------------------------
+
+class SecretsInfoResponse(BaseModel):
+    """Secrets info response."""
+    keys: list[str]
+    count: int
+    secrets_file: str
+
+
+@router.get("/secrets", response_model=SecretsInfoResponse)
+async def list_secrets(session_token: str = Depends(require_auth)):
+    """List configured secret keys (admin view).
+
+    Returns key names only — values are never exposed.
+    """
+    from src.main import secret_manager
+
+    return SecretsInfoResponse(
+        keys=secret_manager.list_keys(),
+        count=secret_manager.count(),
+        secrets_file=str(secret_manager.secrets_file),
+    )
+
+
+@router.post("/secrets/reload")
+async def reload_secrets(session_token: str = Depends(require_auth)):
+    """Reload secrets from the secrets file.
+
+    Useful after adding or updating secrets without restarting the server.
+    """
+    from src.main import secret_manager, workspace_tools
+
+    count = secret_manager.reload()
+    logger.info("secrets_reloaded_via_admin", count=count)
+
+    return {
+        "message": f"Secrets reloaded successfully. {count} secret(s) loaded.",
+        "count": count,
+        "secrets_file": str(secret_manager.secrets_file),
+    }

@@ -41,6 +41,12 @@ Before trying file operations, it's helpful to understand the workspace configur
 **"Show me the workspace configuration"**
 - Returns workspace boundaries and available tool categories
 
+**"What secrets are loaded?"**
+- Lists the names of secrets available for use in `{{secret:KEY}}` templates (no values exposed)
+
+**"Reload the secrets file"**
+- Triggers the server to re-read `secrets.env` from disk (admin action)
+
 ## Filesystem Tools
 
 ### Reading Files
@@ -140,6 +146,9 @@ Before trying file operations, it's helpful to understand the workspace configur
 
 **"Execute 'echo $MY_VAR' with MY_VAR set to 'test'"**
 - Demonstrates environment variable usage
+
+**"Run a git push command with GIT_TOKEN set to my GITHUB_TOKEN secret"**
+- Use `{{secret:GITHUB_TOKEN}}` as the env var value — it will be resolved server-side before execution
 
 ### Working Directory Control
 
@@ -270,6 +279,52 @@ Before trying file operations, it's helpful to understand the workspace configur
 
 **"Checkout the feature branch"** (requires approval)
 - Switches to a different branch
+
+## Secrets and HTTP Tools
+
+### Secret Templates
+
+HostBridge resolves `{{secret:KEY}}` placeholders server-side in any tool parameter before execution. The original template (not the resolved value) is stored in audit logs.
+
+**"What secrets are available to use?"**
+- Returns the list of loaded secret key names without exposing their values
+
+**"Make an API call to GitHub using my GITHUB_TOKEN secret"**
+- The LLM will use `{{secret:GITHUB_TOKEN}}` in the Authorization header
+
+**"Run a shell command that uses my DB_PASSWORD secret in the environment"**
+- Secrets resolve in shell environment variables too — use `{{secret:DB_PASSWORD}}`
+
+### HTTP Requests
+
+**"Fetch the contents of https://httpbin.org/get"**
+- Makes a simple GET request and returns the response body
+
+**"POST to https://api.example.com/data with JSON body {\"key\": \"value\"}"**
+- Makes a POST request with a JSON payload
+
+**"Make a GET request to https://api.github.com/user with Authorization header using my GITHUB_TOKEN"**
+- Uses secret template injection: `Authorization: Bearer {{secret:GITHUB_TOKEN}}`
+
+**"Fetch https://httpbin.org/headers and show me what headers were sent"**
+- Inspects the outgoing request headers
+
+**"Make a request to https://slow-api.example.com with a 60-second timeout"**
+- Configurable timeout per request (capped by server's max_timeout setting)
+
+### SSRF Protection (Security Boundaries)
+
+**"Fetch http://192.168.1.1/admin"**
+- This will fail — private IP ranges are blocked by SSRF protection
+
+**"Make a request to http://localhost:9200"**
+- Blocked — loopback addresses are private ranges
+
+**"Fetch http://169.254.169.254/latest/meta-data"**
+- Blocked — cloud metadata endpoints are explicitly denied
+
+**"Try to reach http://10.0.0.1/internal"**
+- Blocked — RFC 1918 address space is protected
 
 ## Docker Tools
 
@@ -489,6 +544,17 @@ As of this version, HostBridge supports:
 
 - **Workspace Tools** (category: `workspace`)
   - `workspace_info` - Get workspace configuration and boundaries
+  - `workspace_secrets_list` - List loaded secret key names (no values exposed)
+
+- **HTTP Tools** (category: `http`)
+  - `http_request` - Make outbound HTTP requests
+    - Supports GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS
+    - Custom headers and JSON/text request bodies
+    - `{{secret:KEY}}` template injection in URL, headers, and body
+    - SSRF protection: private IPs and metadata endpoints blocked
+    - Domain allowlist/blocklist (configured in `config.yaml`)
+    - Configurable timeout (up to server's max_timeout)
+    - Response truncation at configured `max_response_size_kb`
 
 ### MCP-Specific Tool Names
 
@@ -516,6 +582,8 @@ When using MCP clients (Claude Desktop, Cursor, etc.), tools are identified by t
 - `docker_logs` - Get Docker container logs
 - `docker_action` - Control Docker container lifecycle
 - `workspace_info` - Workspace information
+- `workspace_secrets_list` - List secret key names
+- `http_request` - Make outbound HTTP requests
 
 ### OpenAPI Endpoints
 
@@ -543,12 +611,18 @@ When using REST API directly:
 - `POST /api/tools/docker/logs` - Get Docker container logs
 - `POST /api/tools/docker/action` - Control Docker container lifecycle
 - `POST /api/tools/workspace/info` - Workspace information
+- `POST /api/tools/workspace/secrets_list` - List secret key names
+- `POST /api/tools/http/request` - Make outbound HTTP requests
+
+### Admin API Endpoints
+
+- `GET /admin/api/secrets` - List loaded secret key names (admin auth required)
+- `POST /admin/api/secrets/reload` - Reload secrets from file (admin auth required)
 
 ## Future Tools (Coming Soon)
 
 The following tools are planned for future releases:
 
-- **HTTP Tools** - Make HTTP requests with authentication and SSRF protection
 - **Memory Tools** - Knowledge graph storage for persistent information
 - **Plan Tools** - DAG-based multi-step task execution
 
