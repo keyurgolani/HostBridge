@@ -5,6 +5,11 @@ RUN apt-get update && apt-get install -y \
     git \
     && rm -rf /var/lib/apt/lists/*
 
+# Allow git to operate on host-mounted volumes regardless of directory ownership.
+# The container runs as root while workspace files are typically owned by the
+# host user — git 2.35.2+ rejects this without explicit safe.directory config.
+RUN git config --global --add safe.directory '*'
+
 WORKDIR /app
 
 # Python dependencies
