@@ -1,6 +1,6 @@
 """Pydantic models for tool requests and responses."""
 
-from typing import Optional
+from typing import List, Optional
 from pydantic import BaseModel, Field
 
 
@@ -598,6 +598,123 @@ class MemoryStatsResponse(BaseModel):
     orphaned_nodes: int = Field(..., description="Nodes with no edges at all")
     created_last_24h: int = Field(..., description="Nodes created in the last 24 hours")
     tags_frequency: dict = Field(..., description="Tag usage frequency (top 50)")
+
+
+# ---------------------------------------------------------------------------
+# Plan models (Slice 9)
+# ---------------------------------------------------------------------------
+
+class PlanTaskDef(BaseModel):
+    """Definition of a single task within a plan."""
+    id: str = Field(..., description="Unique task ID within the plan (used for depends_on references)")
+    name: str = Field(..., description="Human-readable task name")
+    tool_category: str = Field(..., description="Tool category (fs, shell, git, http, memory, etc.)")
+    tool_name: str = Field(..., description="Tool name within the category")
+    params: dict = Field(default_factory=dict, description="Tool parameters; may contain {{task:ID.field}} references")
+    depends_on: List[str] = Field(default_factory=list, description="List of task IDs this task depends on")
+    on_failure: Optional[str] = Field(None, description="Per-task failure policy override (stop|skip_dependents|continue); None uses plan default")
+    require_hitl: bool = Field(False, description="If true, requires human approval before task execution")
+
+
+class PlanCreateRequest(BaseModel):
+    """Request to create a new plan."""
+    name: str = Field(..., description="Human-readable plan name")
+    tasks: List[PlanTaskDef] = Field(..., description="List of tasks forming the DAG")
+    on_failure: str = Field("stop", description="Plan-level failure policy (stop|skip_dependents|continue)")
+    metadata: dict = Field(default_factory=dict, description="Optional plan metadata")
+
+
+class PlanCreateResponse(BaseModel):
+    """Response from plan creation."""
+    plan_id: str = Field(..., description="Unique plan ID")
+    name: str = Field(..., description="Plan name")
+    task_count: int = Field(..., description="Number of tasks in the plan")
+    execution_levels: int = Field(..., description="Number of parallel execution levels")
+    execution_order: List[List[str]] = Field(..., description="Task IDs grouped by execution level")
+    created_at: str = Field(..., description="ISO 8601 creation timestamp")
+
+
+class PlanTaskStatus(BaseModel):
+    """Runtime status of a single plan task."""
+    id: str
+    name: str
+    tool_category: str
+    tool_name: str
+    status: str = Field(..., description="Task status (pending|running|completed|failed|skipped)")
+    output: Optional[dict] = Field(None, description="Task output as returned by the tool")
+    error: Optional[str] = Field(None, description="Error message if task failed")
+    started_at: Optional[str] = None
+    completed_at: Optional[str] = None
+    depends_on: List[str] = Field(default_factory=list)
+    execution_level: int = Field(0, description="0-indexed parallel execution level")
+
+
+class PlanStatusRequest(BaseModel):
+    """Request to get plan status."""
+    plan_id: str
+
+
+class PlanStatusResponse(BaseModel):
+    """Current status of a plan and all its tasks."""
+    plan_id: str
+    name: str
+    status: str = Field(..., description="Plan status (pending|running|completed|failed|cancelled)")
+    on_failure: str
+    created_at: str
+    started_at: Optional[str] = None
+    completed_at: Optional[str] = None
+    tasks: List[PlanTaskStatus]
+    tasks_total: int
+    tasks_completed: int
+    tasks_failed: int
+    tasks_skipped: int
+    tasks_running: int
+
+
+class PlanExecuteRequest(BaseModel):
+    """Request to execute a plan."""
+    plan_id: str
+    timeout: int = Field(3600, description="Maximum execution time in seconds (default 1 hour)")
+
+
+class PlanExecuteResponse(BaseModel):
+    """Response from plan execution."""
+    plan_id: str
+    status: str = Field(..., description="Final plan status (completed|failed|cancelled)")
+    tasks_completed: int
+    tasks_failed: int
+    tasks_skipped: int
+    duration_ms: int
+
+
+class PlanListItem(BaseModel):
+    """Summary of a single plan for list responses."""
+    plan_id: str
+    name: str
+    status: str
+    on_failure: str
+    task_count: int
+    created_at: str
+    started_at: Optional[str] = None
+    completed_at: Optional[str] = None
+
+
+class PlanListResponse(BaseModel):
+    """Response listing all plans."""
+    plans: List[PlanListItem]
+    total: int
+
+
+class PlanCancelRequest(BaseModel):
+    """Request to cancel a plan."""
+    plan_id: str
+
+
+class PlanCancelResponse(BaseModel):
+    """Response from plan cancellation."""
+    plan_id: str
+    cancelled_tasks: int
+    status: str
 
 
 # Error response model

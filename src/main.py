@@ -26,6 +26,7 @@ from src.tools.git_tools import GitTools
 from src.tools.docker_tools import DockerTools
 from src.tools.http_tools import HttpTools, SSRFError, DomainBlockedError
 from src.tools.memory_tools import MemoryTools, NodeNotFoundError
+from src.tools.plan_tools import PlanTools, PlanNotFoundError, PlanValidationError
 from src.models import (
     FsReadRequest,
     FsReadResponse,
@@ -91,6 +92,15 @@ from src.models import (
     MemorySubtreeRequest,
     MemoryNodesResponse,
     MemoryStatsResponse,
+    PlanCreateRequest,
+    PlanCreateResponse,
+    PlanExecuteRequest,
+    PlanExecuteResponse,
+    PlanStatusRequest,
+    PlanStatusResponse,
+    PlanListResponse,
+    PlanCancelRequest,
+    PlanCancelResponse,
     ErrorResponse,
 )
 
@@ -117,6 +127,57 @@ git_tools = GitTools(workspace_manager)
 docker_tools = DockerTools()
 http_tools = HttpTools(config.http)
 memory_tools = MemoryTools(db)
+
+
+async def _tool_dispatch(category: str, name: str, params: dict) -> dict:
+    """Dispatch a tool call for plan task execution.
+
+    Uses inspect to auto-detect the request model from the method signature,
+    so no manual mapping is needed when new tools are added.
+    """
+    import inspect
+
+    tool_map = {
+        "fs": fs_tools,
+        "shell": shell_tools,
+        "git": git_tools,
+        "http": http_tools,
+        "memory": memory_tools,
+        "workspace": workspace_tools,
+        "docker": docker_tools,
+    }
+
+    tool_obj = tool_map.get(category)
+    if not tool_obj:
+        raise ValueError(
+            f"Unknown tool category '{category}'. Available: {sorted(tool_map)}"
+        )
+
+    method = getattr(tool_obj, name, None)
+    if not method or not callable(method):
+        raise ValueError(f"Unknown tool '{name}' in category '{category}'")
+
+    sig = inspect.signature(method)
+    param_list = [p for pname, p in sig.parameters.items() if pname != "self"]
+
+    if not param_list:
+        # Methods like memory_tools.roots() / memory_tools.stats() take no args
+        result = await method()
+    else:
+        annotation = param_list[0].annotation
+        if annotation is inspect.Parameter.empty:
+            raise ValueError(
+                f"Tool method '{category}.{name}' has unannotated first parameter"
+            )
+        request = annotation(**params)
+        result = await method(request)
+
+    if hasattr(result, "model_dump"):
+        return result.model_dump()
+    return dict(result) if result else {}
+
+
+plan_tools = PlanTools(db, hitl_manager, _tool_dispatch)
 
 
 @asynccontextmanager
@@ -178,6 +239,12 @@ memory_app = FastAPI(
     version="0.1.0",
 )
 
+plan_app = FastAPI(
+    title="HostBridge — Plan Tools",
+    description="DAG-based multi-step plan execution for HostBridge",
+    version="0.1.0",
+)
+
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
@@ -227,6 +294,33 @@ async def node_not_found_handler(request: Request, exc: NodeNotFoundError):
             error_type="node_not_found",
             message=str(exc),
             suggestion_tool="memory_search",
+        ).model_dump(),
+    )
+
+
+@app.exception_handler(PlanNotFoundError)
+async def plan_not_found_handler(request: Request, exc: PlanNotFoundError):
+    """Handle plan not found errors."""
+    logger.warning("plan_not_found", error=str(exc), path=request.url.path)
+    return JSONResponse(
+        status_code=status.HTTP_404_NOT_FOUND,
+        content=ErrorResponse(
+            error_type="plan_not_found",
+            message=str(exc),
+            suggestion_tool="plan_list",
+        ).model_dump(),
+    )
+
+
+@app.exception_handler(PlanValidationError)
+async def plan_validation_error_handler(request: Request, exc: PlanValidationError):
+    """Handle plan DAG validation errors."""
+    logger.warning("plan_validation_error", error=str(exc), path=request.url.path)
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content=ErrorResponse(
+            error_type="plan_validation_error",
+            message=str(exc),
         ).model_dump(),
     )
 
@@ -2514,6 +2608,207 @@ async def memory_stats_sub() -> MemoryStatsResponse:
     )
 
 
+# ============================================================================
+# Plan Tools
+# ============================================================================
+
+_PLAN_CREATE_DESC = """Create a new multi-step plan with a DAG of tasks.
+
+Each task specifies a HostBridge tool to call (tool_category + tool_name + params).
+Tasks may depend on other tasks via `depends_on` (list of task IDs).
+Task params may contain `{{task:TASK_ID.field}}` references resolved at runtime.
+
+Validates the DAG at creation time using Kahn's algorithm (cycle detection, missing refs).
+Returns the execution order grouped by parallel level.
+
+on_failure policies (plan-level default, overridable per-task):
+- **stop**: abort all remaining tasks when any task fails (default)
+- **skip_dependents**: skip only tasks that depend on the failed task
+- **continue**: continue all tasks regardless of failures"""
+
+_PLAN_EXECUTE_DESC = """Execute a plan synchronously, blocking until all tasks complete.
+
+Tasks at the same dependency level run **concurrently** via asyncio.gather.
+Task outputs are stored and can be referenced in downstream params via `{{task:ID.field}}`.
+Tasks with `require_hitl: true` block for human approval before executing.
+
+Returns the final plan status and per-task counts."""
+
+_PLAN_STATUS_DESC = """Get current status of a plan and all its tasks.
+
+Shows per-task status (pending|running|completed|failed|skipped),
+output, error messages, and timing information."""
+
+_PLAN_LIST_DESC = """List all plans with summary information.
+
+Returns plan ID, name, status, task count, and timestamps for all plans."""
+
+_PLAN_CANCEL_DESC = """Cancel a plan, marking all pending and running tasks as skipped.
+
+A cancelled plan cannot be re-executed — create a new plan to re-run.
+Useful for aborting long-running plans."""
+
+
+@app.post(
+    "/api/tools/plan/create",
+    operation_id="plan_create",
+    summary="Create Plan",
+    description=_PLAN_CREATE_DESC,
+    response_model=PlanCreateResponse,
+    tags=["plan"],
+)
+async def plan_create_root(request: PlanCreateRequest) -> PlanCreateResponse:
+    """Create a new plan (root app endpoint)."""
+    return await execute_tool(
+        "plan", "create", request.model_dump(),
+        lambda: plan_tools.create(request),
+    )
+
+
+@plan_app.post(
+    "/create",
+    operation_id="plan_create",
+    summary="Create Plan",
+    description=_PLAN_CREATE_DESC,
+    response_model=PlanCreateResponse,
+    tags=["plan"],
+)
+async def plan_create_sub(request: PlanCreateRequest) -> PlanCreateResponse:
+    """Create a new plan (sub-app endpoint)."""
+    return await execute_tool(
+        "plan", "create", request.model_dump(),
+        lambda: plan_tools.create(request),
+    )
+
+
+@app.post(
+    "/api/tools/plan/execute",
+    operation_id="plan_execute",
+    summary="Execute Plan",
+    description=_PLAN_EXECUTE_DESC,
+    response_model=PlanExecuteResponse,
+    tags=["plan"],
+)
+async def plan_execute_root(request: PlanExecuteRequest) -> PlanExecuteResponse:
+    """Execute a plan synchronously (root app endpoint)."""
+    return await execute_tool(
+        "plan", "execute", request.model_dump(),
+        lambda: plan_tools.execute(request),
+    )
+
+
+@plan_app.post(
+    "/execute",
+    operation_id="plan_execute",
+    summary="Execute Plan",
+    description=_PLAN_EXECUTE_DESC,
+    response_model=PlanExecuteResponse,
+    tags=["plan"],
+)
+async def plan_execute_sub(request: PlanExecuteRequest) -> PlanExecuteResponse:
+    """Execute a plan synchronously (sub-app endpoint)."""
+    return await execute_tool(
+        "plan", "execute", request.model_dump(),
+        lambda: plan_tools.execute(request),
+    )
+
+
+@app.post(
+    "/api/tools/plan/status",
+    operation_id="plan_status",
+    summary="Get Plan Status",
+    description=_PLAN_STATUS_DESC,
+    response_model=PlanStatusResponse,
+    tags=["plan"],
+)
+async def plan_status_root(request: PlanStatusRequest) -> PlanStatusResponse:
+    """Get plan status (root app endpoint)."""
+    return await execute_tool(
+        "plan", "status", request.model_dump(),
+        lambda: plan_tools.status(request),
+    )
+
+
+@plan_app.post(
+    "/status",
+    operation_id="plan_status",
+    summary="Get Plan Status",
+    description=_PLAN_STATUS_DESC,
+    response_model=PlanStatusResponse,
+    tags=["plan"],
+)
+async def plan_status_sub(request: PlanStatusRequest) -> PlanStatusResponse:
+    """Get plan status (sub-app endpoint)."""
+    return await execute_tool(
+        "plan", "status", request.model_dump(),
+        lambda: plan_tools.status(request),
+    )
+
+
+@app.post(
+    "/api/tools/plan/list",
+    operation_id="plan_list",
+    summary="List Plans",
+    description=_PLAN_LIST_DESC,
+    response_model=PlanListResponse,
+    tags=["plan"],
+)
+async def plan_list_root() -> PlanListResponse:
+    """List all plans (root app endpoint)."""
+    return await execute_tool(
+        "plan", "list", {},
+        lambda: plan_tools.list(),
+    )
+
+
+@plan_app.post(
+    "/list",
+    operation_id="plan_list",
+    summary="List Plans",
+    description=_PLAN_LIST_DESC,
+    response_model=PlanListResponse,
+    tags=["plan"],
+)
+async def plan_list_sub() -> PlanListResponse:
+    """List all plans (sub-app endpoint)."""
+    return await execute_tool(
+        "plan", "list", {},
+        lambda: plan_tools.list(),
+    )
+
+
+@app.post(
+    "/api/tools/plan/cancel",
+    operation_id="plan_cancel",
+    summary="Cancel Plan",
+    description=_PLAN_CANCEL_DESC,
+    response_model=PlanCancelResponse,
+    tags=["plan"],
+)
+async def plan_cancel_root(request: PlanCancelRequest) -> PlanCancelResponse:
+    """Cancel a plan (root app endpoint)."""
+    return await execute_tool(
+        "plan", "cancel", request.model_dump(),
+        lambda: plan_tools.cancel(request),
+    )
+
+
+@plan_app.post(
+    "/cancel",
+    operation_id="plan_cancel",
+    summary="Cancel Plan",
+    description=_PLAN_CANCEL_DESC,
+    response_model=PlanCancelResponse,
+    tags=["plan"],
+)
+async def plan_cancel_sub(request: PlanCancelRequest) -> PlanCancelResponse:
+    """Cancel a plan (sub-app endpoint)."""
+    return await execute_tool(
+        "plan", "cancel", request.model_dump(),
+        lambda: plan_tools.cancel(request),
+    )
+
+
 # Initialize and mount MCP server using Streamable HTTP transport (recommended)
 # IMPORTANT: This must be done AFTER all endpoints are defined, as fastapi-mcp
 # discovers tools at mount time
@@ -2529,6 +2824,7 @@ app.mount("/tools/git", git_app)
 app.mount("/tools/docker", docker_app)
 app.mount("/tools/http", http_app)
 app.mount("/tools/memory", memory_app)
+app.mount("/tools/plan", plan_app)
 
 
 # ============================================================================

@@ -182,6 +182,55 @@ class Database:
             ON memory_nodes(entity_type)
         """)
 
+        # Plan tables
+        await self._connection.execute("""
+            CREATE TABLE IF NOT EXISTS plan_plans (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'pending',
+                on_failure TEXT NOT NULL DEFAULT 'stop',
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                started_at TEXT,
+                completed_at TEXT,
+                metadata TEXT NOT NULL DEFAULT '{}'
+            )
+        """)
+
+        await self._connection.execute("""
+            CREATE INDEX IF NOT EXISTS idx_plan_plans_status
+            ON plan_plans(status)
+        """)
+
+        await self._connection.execute("""
+            CREATE TABLE IF NOT EXISTS plan_tasks (
+                id TEXT PRIMARY KEY,
+                plan_id TEXT NOT NULL REFERENCES plan_plans(id) ON DELETE CASCADE,
+                name TEXT NOT NULL,
+                tool_category TEXT NOT NULL,
+                tool_name TEXT NOT NULL,
+                params TEXT NOT NULL DEFAULT '{}',
+                depends_on TEXT NOT NULL DEFAULT '[]',
+                on_failure TEXT,
+                require_hitl INTEGER NOT NULL DEFAULT 0,
+                status TEXT NOT NULL DEFAULT 'pending',
+                output TEXT,
+                error TEXT,
+                started_at TEXT,
+                completed_at TEXT,
+                execution_level INTEGER NOT NULL DEFAULT 0
+            )
+        """)
+
+        await self._connection.execute("""
+            CREATE INDEX IF NOT EXISTS idx_plan_tasks_plan_id
+            ON plan_tasks(plan_id)
+        """)
+
+        await self._connection.execute("""
+            CREATE INDEX IF NOT EXISTS idx_plan_tasks_status
+            ON plan_tasks(plan_id, status)
+        """)
+
         await self._connection.commit()
         logger.info("database_schema_initialized")
     

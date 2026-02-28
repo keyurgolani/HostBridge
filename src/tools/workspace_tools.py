@@ -40,6 +40,6 @@ class WorkspaceTools:
             default_workspace=workspace_info["default_workspace"],
             available_directories=[workspace_info["default_workspace"]],
             disk_usage=workspace_info["disk_usage"],
-            tool_categories=["fs", "workspace", "shell", "git", "docker", "http", "memory"],
+            tool_categories=["fs", "workspace", "shell", "git", "docker", "http", "memory", "plan"],
             secret_count=secret_count,
         )
