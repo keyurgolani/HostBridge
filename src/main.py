@@ -20,6 +20,7 @@ from src.hitl import HITLManager
 from src.tools.fs_tools import FilesystemTools
 from src.tools.workspace_tools import WorkspaceTools
 from src.tools.shell_tools import ShellTools
+from src.tools.git_tools import GitTools
 from src.models import (
     FsReadRequest,
     FsReadResponse,
@@ -32,6 +33,30 @@ from src.models import (
     ShellExecuteRequest,
     ShellExecuteResponse,
     WorkspaceInfoResponse,
+    GitStatusRequest,
+    GitStatusResponse,
+    GitLogRequest,
+    GitLogResponse,
+    GitDiffRequest,
+    GitDiffResponse,
+    GitCommitRequest,
+    GitCommitResponse,
+    GitPushRequest,
+    GitPushResponse,
+    GitPullRequest,
+    GitPullResponse,
+    GitCheckoutRequest,
+    GitCheckoutResponse,
+    GitBranchRequest,
+    GitBranchResponse,
+    GitListBranchesRequest,
+    GitListBranchesResponse,
+    GitStashRequest,
+    GitStashResponse,
+    GitShowRequest,
+    GitShowResponse,
+    GitRemoteRequest,
+    GitRemoteResponse,
     ErrorResponse,
 )
 
@@ -51,6 +76,7 @@ hitl_manager = HITLManager(db, config.hitl.default_ttl_seconds)
 fs_tools = FilesystemTools(workspace_manager)
 workspace_tools = WorkspaceTools(workspace_manager)
 shell_tools = ShellTools(workspace_manager)
+git_tools = GitTools(workspace_manager)
 
 
 @asynccontextmanager
@@ -90,6 +116,12 @@ fs_app = FastAPI(
 workspace_app = FastAPI(
     title="HostBridge — Workspace Tools",
     description="Workspace management for HostBridge",
+    version="0.1.0",
+)
+
+git_app = FastAPI(
+    title="HostBridge — Git Tools",
+    description="Git repository management for HostBridge",
     version="0.1.0",
 )
 
@@ -906,6 +938,806 @@ async def shell_execute_sub(request: ShellExecuteRequest) -> ShellExecuteRespons
     )
 
 
+# Create git sub-app
+git_app = FastAPI(
+    title="HostBridge — Git Tools",
+    description="Git repository management for HostBridge",
+    version="0.1.0",
+)
+
+
+# Git tool endpoints
+
+@app.post(
+    "/api/tools/git/status",
+    operation_id="git_status",
+    summary="Get Git Repository Status",
+    description="""Get the current status of a git repository.
+
+Shows:
+- Current branch
+- Staged files
+- Unstaged changes
+- Untracked files
+- Commits ahead/behind remote
+
+Use this tool to check the state of a repository before making changes.""",
+    response_model=GitStatusResponse,
+    tags=["git"],
+)
+async def git_status_root(request: GitStatusRequest) -> GitStatusResponse:
+    """Get git repository status (root endpoint)."""
+    return await execute_tool(
+        "git",
+        "status",
+        request.model_dump(),
+        lambda: git_tools.status(
+            repo_path=request.repo_path,
+            workspace_dir=request.workspace_dir,
+        ),
+    )
+
+
+@git_app.post(
+    "/status",
+    operation_id="git_status",
+    summary="Get Git Repository Status",
+    description="""Get the current status of a git repository.
+
+Shows:
+- Current branch
+- Staged files
+- Unstaged changes
+- Untracked files
+- Commits ahead/behind remote
+
+Use this tool to check the state of a repository before making changes.""",
+    response_model=GitStatusResponse,
+    tags=["git"],
+)
+async def git_status_sub(request: GitStatusRequest) -> GitStatusResponse:
+    """Get git repository status (sub-app endpoint)."""
+    return await execute_tool(
+        "git",
+        "status",
+        request.model_dump(),
+        lambda: git_tools.status(
+            repo_path=request.repo_path,
+            workspace_dir=request.workspace_dir,
+        ),
+    )
+
+
+@app.post(
+    "/api/tools/git/log",
+    operation_id="git_log",
+    summary="View Git Commit History",
+    description="""View the commit history of a git repository.
+
+Supports filtering by:
+- Author
+- Date range (since/until)
+- File path
+- Maximum number of commits
+
+Use this tool to review recent changes or find specific commits.""",
+    response_model=GitLogResponse,
+    tags=["git"],
+)
+async def git_log_root(request: GitLogRequest) -> GitLogResponse:
+    """View git commit history (root endpoint)."""
+    return await execute_tool(
+        "git",
+        "log",
+        request.model_dump(),
+        lambda: git_tools.log(
+            repo_path=request.repo_path,
+            max_count=request.max_count,
+            author=request.author,
+            since=request.since,
+            until=request.until,
+            path=request.path,
+            format=request.format,
+            workspace_dir=request.workspace_dir,
+        ),
+    )
+
+
+@git_app.post(
+    "/log",
+    operation_id="git_log",
+    summary="View Git Commit History",
+    description="""View the commit history of a git repository.
+
+Supports filtering by:
+- Author
+- Date range (since/until)
+- File path
+- Maximum number of commits
+
+Use this tool to review recent changes or find specific commits.""",
+    response_model=GitLogResponse,
+    tags=["git"],
+)
+async def git_log_sub(request: GitLogRequest) -> GitLogResponse:
+    """View git commit history (sub-app endpoint)."""
+    return await execute_tool(
+        "git",
+        "log",
+        request.model_dump(),
+        lambda: git_tools.log(
+            repo_path=request.repo_path,
+            max_count=request.max_count,
+            author=request.author,
+            since=request.since,
+            until=request.until,
+            path=request.path,
+            format=request.format,
+            workspace_dir=request.workspace_dir,
+        ),
+    )
+
+
+@app.post(
+    "/api/tools/git/diff",
+    operation_id="git_diff",
+    summary="View Git File Differences",
+    description="""View file differences in a git repository.
+
+Can show:
+- Unstaged changes (default)
+- Staged changes (--cached)
+- Diff against specific commit/branch
+- Statistics only (files changed, insertions, deletions)
+
+Use this tool to review changes before committing.""",
+    response_model=GitDiffResponse,
+    tags=["git"],
+)
+async def git_diff_root(request: GitDiffRequest) -> GitDiffResponse:
+    """View git file differences (root endpoint)."""
+    return await execute_tool(
+        "git",
+        "diff",
+        request.model_dump(),
+        lambda: git_tools.diff(
+            repo_path=request.repo_path,
+            ref=request.ref,
+            path=request.path,
+            staged=request.staged,
+            stat_only=request.stat_only,
+            workspace_dir=request.workspace_dir,
+        ),
+    )
+
+
+@git_app.post(
+    "/diff",
+    operation_id="git_diff",
+    summary="View Git File Differences",
+    description="""View file differences in a git repository.
+
+Can show:
+- Unstaged changes (default)
+- Staged changes (--cached)
+- Diff against specific commit/branch
+- Statistics only (files changed, insertions, deletions)
+
+Use this tool to review changes before committing.""",
+    response_model=GitDiffResponse,
+    tags=["git"],
+)
+async def git_diff_sub(request: GitDiffRequest) -> GitDiffResponse:
+    """View git file differences (sub-app endpoint)."""
+    return await execute_tool(
+        "git",
+        "diff",
+        request.model_dump(),
+        lambda: git_tools.diff(
+            repo_path=request.repo_path,
+            ref=request.ref,
+            path=request.path,
+            staged=request.staged,
+            stat_only=request.stat_only,
+            workspace_dir=request.workspace_dir,
+        ),
+    )
+
+
+@app.post(
+    "/api/tools/git/commit",
+    operation_id="git_commit",
+    summary="Create Git Commit",
+    description="""Create a git commit with the specified message.
+
+This operation:
+- Stages specified files (or all changes if none specified)
+- Creates a commit with the provided message
+- Returns the commit hash and list of files committed
+
+IMPORTANT: This operation requires approval by default as it modifies repository history.
+
+Use this tool after reviewing changes with git_diff.""",
+    response_model=GitCommitResponse,
+    tags=["git"],
+)
+async def git_commit_root(request: GitCommitRequest) -> GitCommitResponse:
+    """Create git commit (root endpoint)."""
+    return await execute_tool(
+        "git",
+        "commit",
+        request.model_dump(),
+        lambda: git_tools.commit(
+            message=request.message,
+            repo_path=request.repo_path,
+            files=request.files,
+            workspace_dir=request.workspace_dir,
+        ),
+        force_hitl=True,
+        hitl_reason="Git commit requires approval",
+    )
+
+
+@git_app.post(
+    "/commit",
+    operation_id="git_commit",
+    summary="Create Git Commit",
+    description="""Create a git commit with the specified message.
+
+This operation:
+- Stages specified files (or all changes if none specified)
+- Creates a commit with the provided message
+- Returns the commit hash and list of files committed
+
+IMPORTANT: This operation requires approval by default as it modifies repository history.
+
+Use this tool after reviewing changes with git_diff.""",
+    response_model=GitCommitResponse,
+    tags=["git"],
+)
+async def git_commit_sub(request: GitCommitRequest) -> GitCommitResponse:
+    """Create git commit (sub-app endpoint)."""
+    return await execute_tool(
+        "git",
+        "commit",
+        request.model_dump(),
+        lambda: git_tools.commit(
+            message=request.message,
+            repo_path=request.repo_path,
+            files=request.files,
+            workspace_dir=request.workspace_dir,
+        ),
+        force_hitl=True,
+        hitl_reason="Git commit requires approval",
+    )
+
+
+@app.post(
+    "/api/tools/git/push",
+    operation_id="git_push",
+    summary="Push to Git Remote",
+    description="""Push commits to a remote repository.
+
+This operation:
+- Pushes commits to the specified remote and branch
+- Can force push if needed (use with caution)
+- Returns number of commits pushed
+
+IMPORTANT: This operation requires approval by default as it modifies remote repository.
+
+Use {{secret:KEY}} syntax for git credentials in environment variables.
+
+Example with credentials:
+Set GIT_ASKPASS environment variable to use stored credentials.""",
+    response_model=GitPushResponse,
+    tags=["git"],
+)
+async def git_push_root(request: GitPushRequest) -> GitPushResponse:
+    """Push to git remote (root endpoint)."""
+    return await execute_tool(
+        "git",
+        "push",
+        request.model_dump(),
+        lambda: git_tools.push(
+            repo_path=request.repo_path,
+            remote=request.remote,
+            branch=request.branch,
+            force=request.force,
+            workspace_dir=request.workspace_dir,
+        ),
+        force_hitl=True,
+        hitl_reason="Git push requires approval",
+    )
+
+
+@git_app.post(
+    "/push",
+    operation_id="git_push",
+    summary="Push to Git Remote",
+    description="""Push commits to a remote repository.
+
+This operation:
+- Pushes commits to the specified remote and branch
+- Can force push if needed (use with caution)
+- Returns number of commits pushed
+
+IMPORTANT: This operation requires approval by default as it modifies remote repository.
+
+Use {{secret:KEY}} syntax for git credentials in environment variables.
+
+Example with credentials:
+Set GIT_ASKPASS environment variable to use stored credentials.""",
+    response_model=GitPushResponse,
+    tags=["git"],
+)
+async def git_push_sub(request: GitPushRequest) -> GitPushResponse:
+    """Push to git remote (sub-app endpoint)."""
+    return await execute_tool(
+        "git",
+        "push",
+        request.model_dump(),
+        lambda: git_tools.push(
+            repo_path=request.repo_path,
+            remote=request.remote,
+            branch=request.branch,
+            force=request.force,
+            workspace_dir=request.workspace_dir,
+        ),
+        force_hitl=True,
+        hitl_reason="Git push requires approval",
+    )
+
+
+@app.post(
+    "/api/tools/git/pull",
+    operation_id="git_pull",
+    summary="Pull from Git Remote",
+    description="""Pull commits from a remote repository.
+
+This operation:
+- Fetches and merges (or rebases) commits from remote
+- Returns list of files changed
+- Can use rebase instead of merge
+
+Use {{secret:KEY}} syntax for git credentials in environment variables.""",
+    response_model=GitPullResponse,
+    tags=["git"],
+)
+async def git_pull_root(request: GitPullRequest) -> GitPullResponse:
+    """Pull from git remote (root endpoint)."""
+    return await execute_tool(
+        "git",
+        "pull",
+        request.model_dump(),
+        lambda: git_tools.pull(
+            repo_path=request.repo_path,
+            remote=request.remote,
+            branch=request.branch,
+            rebase=request.rebase,
+            workspace_dir=request.workspace_dir,
+        ),
+    )
+
+
+@git_app.post(
+    "/pull",
+    operation_id="git_pull",
+    summary="Pull from Git Remote",
+    description="""Pull commits from a remote repository.
+
+This operation:
+- Fetches and merges (or rebases) commits from remote
+- Returns list of files changed
+- Can use rebase instead of merge
+
+Use {{secret:KEY}} syntax for git credentials in environment variables.""",
+    response_model=GitPullResponse,
+    tags=["git"],
+)
+async def git_pull_sub(request: GitPullRequest) -> GitPullResponse:
+    """Pull from git remote (sub-app endpoint)."""
+    return await execute_tool(
+        "git",
+        "pull",
+        request.model_dump(),
+        lambda: git_tools.pull(
+            repo_path=request.repo_path,
+            remote=request.remote,
+            branch=request.branch,
+            rebase=request.rebase,
+            workspace_dir=request.workspace_dir,
+        ),
+    )
+
+
+@app.post(
+    "/api/tools/git/checkout",
+    operation_id="git_checkout",
+    summary="Git Checkout Branch or Commit",
+    description="""Switch to a different branch or commit.
+
+This operation:
+- Switches to the specified branch or commit
+- Can create a new branch if requested
+- Returns previous and current branch
+
+IMPORTANT: This operation requires approval by default as it modifies working tree.
+
+Use this tool to switch between branches or restore files.""",
+    response_model=GitCheckoutResponse,
+    tags=["git"],
+)
+async def git_checkout_root(request: GitCheckoutRequest) -> GitCheckoutResponse:
+    """Git checkout (root endpoint)."""
+    return await execute_tool(
+        "git",
+        "checkout",
+        request.model_dump(),
+        lambda: git_tools.checkout(
+            target=request.target,
+            repo_path=request.repo_path,
+            create=request.create,
+            workspace_dir=request.workspace_dir,
+        ),
+        force_hitl=True,
+        hitl_reason="Git checkout requires approval",
+    )
+
+
+@git_app.post(
+    "/checkout",
+    operation_id="git_checkout",
+    summary="Git Checkout Branch or Commit",
+    description="""Switch to a different branch or commit.
+
+This operation:
+- Switches to the specified branch or commit
+- Can create a new branch if requested
+- Returns previous and current branch
+
+IMPORTANT: This operation requires approval by default as it modifies working tree.
+
+Use this tool to switch between branches or restore files.""",
+    response_model=GitCheckoutResponse,
+    tags=["git"],
+)
+async def git_checkout_sub(request: GitCheckoutRequest) -> GitCheckoutResponse:
+    """Git checkout (sub-app endpoint)."""
+    return await execute_tool(
+        "git",
+        "checkout",
+        request.model_dump(),
+        lambda: git_tools.checkout(
+            target=request.target,
+            repo_path=request.repo_path,
+            create=request.create,
+            workspace_dir=request.workspace_dir,
+        ),
+        force_hitl=True,
+        hitl_reason="Git checkout requires approval",
+    )
+
+
+@app.post(
+    "/api/tools/git/branch",
+    operation_id="git_branch",
+    summary="Create or Delete Git Branch",
+    description="""Create or delete a git branch.
+
+This operation:
+- Creates a new branch from current HEAD
+- Or deletes an existing branch
+- Can force delete unmerged branches
+
+IMPORTANT: Branch deletion requires approval by default.
+
+Use git_list_branches to see available branches.""",
+    response_model=GitBranchResponse,
+    tags=["git"],
+)
+async def git_branch_root(request: GitBranchRequest) -> GitBranchResponse:
+    """Create or delete git branch (root endpoint)."""
+    force_hitl = request.action == "delete"
+    return await execute_tool(
+        "git",
+        "branch",
+        request.model_dump(),
+        lambda: git_tools.branch(
+            name=request.name,
+            repo_path=request.repo_path,
+            action=request.action,
+            force=request.force,
+            workspace_dir=request.workspace_dir,
+        ),
+        force_hitl=force_hitl,
+        hitl_reason="Git branch deletion requires approval" if force_hitl else None,
+    )
+
+
+@git_app.post(
+    "/branch",
+    operation_id="git_branch",
+    summary="Create or Delete Git Branch",
+    description="""Create or delete a git branch.
+
+This operation:
+- Creates a new branch from current HEAD
+- Or deletes an existing branch
+- Can force delete unmerged branches
+
+IMPORTANT: Branch deletion requires approval by default.
+
+Use git_list_branches to see available branches.""",
+    response_model=GitBranchResponse,
+    tags=["git"],
+)
+async def git_branch_sub(request: GitBranchRequest) -> GitBranchResponse:
+    """Create or delete git branch (sub-app endpoint)."""
+    force_hitl = request.action == "delete"
+    return await execute_tool(
+        "git",
+        "branch",
+        request.model_dump(),
+        lambda: git_tools.branch(
+            name=request.name,
+            repo_path=request.repo_path,
+            action=request.action,
+            force=request.force,
+            workspace_dir=request.workspace_dir,
+        ),
+        force_hitl=force_hitl,
+        hitl_reason="Git branch deletion requires approval" if force_hitl else None,
+    )
+
+
+@app.post(
+    "/api/tools/git/list_branches",
+    operation_id="git_list_branches",
+    summary="List Git Branches",
+    description="""List all branches in a git repository.
+
+Shows:
+- Branch names
+- Current branch indicator
+- Remote branches (if requested)
+- Last commit on each branch
+
+Use this tool to see available branches before checkout.""",
+    response_model=GitListBranchesResponse,
+    tags=["git"],
+)
+async def git_list_branches_root(request: GitListBranchesRequest) -> GitListBranchesResponse:
+    """List git branches (root endpoint)."""
+    return await execute_tool(
+        "git",
+        "list_branches",
+        request.model_dump(),
+        lambda: git_tools.list_branches(
+            repo_path=request.repo_path,
+            remote=request.remote,
+            workspace_dir=request.workspace_dir,
+        ),
+    )
+
+
+@git_app.post(
+    "/list_branches",
+    operation_id="git_list_branches",
+    summary="List Git Branches",
+    description="""List all branches in a git repository.
+
+Shows:
+- Branch names
+- Current branch indicator
+- Remote branches (if requested)
+- Last commit on each branch
+
+Use this tool to see available branches before checkout.""",
+    response_model=GitListBranchesResponse,
+    tags=["git"],
+)
+async def git_list_branches_sub(request: GitListBranchesRequest) -> GitListBranchesResponse:
+    """List git branches (sub-app endpoint)."""
+    return await execute_tool(
+        "git",
+        "list_branches",
+        request.model_dump(),
+        lambda: git_tools.list_branches(
+            repo_path=request.repo_path,
+            remote=request.remote,
+            workspace_dir=request.workspace_dir,
+        ),
+    )
+
+
+@app.post(
+    "/api/tools/git/stash",
+    operation_id="git_stash",
+    summary="Git Stash Operations",
+    description="""Manage git stash (temporary storage for changes).
+
+Supported actions:
+- push: Save current changes to stash
+- pop: Apply and remove most recent stash
+- list: Show all stashes
+- drop: Remove a specific stash
+
+Use this tool to temporarily save work in progress.""",
+    response_model=GitStashResponse,
+    tags=["git"],
+)
+async def git_stash_root(request: GitStashRequest) -> GitStashResponse:
+    """Git stash operations (root endpoint)."""
+    return await execute_tool(
+        "git",
+        "stash",
+        request.model_dump(),
+        lambda: git_tools.stash(
+            repo_path=request.repo_path,
+            action=request.action,
+            message=request.message,
+            index=request.index,
+            workspace_dir=request.workspace_dir,
+        ),
+    )
+
+
+@git_app.post(
+    "/stash",
+    operation_id="git_stash",
+    summary="Git Stash Operations",
+    description="""Manage git stash (temporary storage for changes).
+
+Supported actions:
+- push: Save current changes to stash
+- pop: Apply and remove most recent stash
+- list: Show all stashes
+- drop: Remove a specific stash
+
+Use this tool to temporarily save work in progress.""",
+    response_model=GitStashResponse,
+    tags=["git"],
+)
+async def git_stash_sub(request: GitStashRequest) -> GitStashResponse:
+    """Git stash operations (sub-app endpoint)."""
+    return await execute_tool(
+        "git",
+        "stash",
+        request.model_dump(),
+        lambda: git_tools.stash(
+            repo_path=request.repo_path,
+            action=request.action,
+            message=request.message,
+            index=request.index,
+            workspace_dir=request.workspace_dir,
+        ),
+    )
+
+
+@app.post(
+    "/api/tools/git/show",
+    operation_id="git_show",
+    summary="Show Git Commit Details",
+    description="""Show detailed information about a specific commit.
+
+Returns:
+- Commit hash and metadata
+- Author and date
+- Commit message and body
+- Full diff of changes
+- List of files changed
+
+Use this tool to inspect a specific commit.""",
+    response_model=GitShowResponse,
+    tags=["git"],
+)
+async def git_show_root(request: GitShowRequest) -> GitShowResponse:
+    """Show git commit details (root endpoint)."""
+    return await execute_tool(
+        "git",
+        "show",
+        request.model_dump(),
+        lambda: git_tools.show(
+            repo_path=request.repo_path,
+            ref=request.ref,
+            workspace_dir=request.workspace_dir,
+        ),
+    )
+
+
+@git_app.post(
+    "/show",
+    operation_id="git_show",
+    summary="Show Git Commit Details",
+    description="""Show detailed information about a specific commit.
+
+Returns:
+- Commit hash and metadata
+- Author and date
+- Commit message and body
+- Full diff of changes
+- List of files changed
+
+Use this tool to inspect a specific commit.""",
+    response_model=GitShowResponse,
+    tags=["git"],
+)
+async def git_show_sub(request: GitShowRequest) -> GitShowResponse:
+    """Show git commit details (sub-app endpoint)."""
+    return await execute_tool(
+        "git",
+        "show",
+        request.model_dump(),
+        lambda: git_tools.show(
+            repo_path=request.repo_path,
+            ref=request.ref,
+            workspace_dir=request.workspace_dir,
+        ),
+    )
+
+
+@app.post(
+    "/api/tools/git/remote",
+    operation_id="git_remote",
+    summary="Manage Git Remotes",
+    description="""Manage git remote repositories.
+
+Supported actions:
+- list: Show all configured remotes
+- add: Add a new remote
+- remove: Remove an existing remote
+
+Use this tool to configure remote repositories.""",
+    response_model=GitRemoteResponse,
+    tags=["git"],
+)
+async def git_remote_root(request: GitRemoteRequest) -> GitRemoteResponse:
+    """Manage git remotes (root endpoint)."""
+    return await execute_tool(
+        "git",
+        "remote",
+        request.model_dump(),
+        lambda: git_tools.remote(
+            repo_path=request.repo_path,
+            action=request.action,
+            name=request.name,
+            url=request.url,
+            workspace_dir=request.workspace_dir,
+        ),
+    )
+
+
+@git_app.post(
+    "/remote",
+    operation_id="git_remote",
+    summary="Manage Git Remotes",
+    description="""Manage git remote repositories.
+
+Supported actions:
+- list: Show all configured remotes
+- add: Add a new remote
+- remove: Remove an existing remote
+
+Use this tool to configure remote repositories.""",
+    response_model=GitRemoteResponse,
+    tags=["git"],
+)
+async def git_remote_sub(request: GitRemoteRequest) -> GitRemoteResponse:
+    """Manage git remotes (sub-app endpoint)."""
+    return await execute_tool(
+        "git",
+        "remote",
+        request.model_dump(),
+        lambda: git_tools.remote(
+            repo_path=request.repo_path,
+            action=request.action,
+            name=request.name,
+            url=request.url,
+            workspace_dir=request.workspace_dir,
+        ),
+    )
+
+
 # Initialize and mount MCP server using Streamable HTTP transport (recommended)
 # IMPORTANT: This must be done AFTER all endpoints are defined, as fastapi-mcp
 # discovers tools at mount time
@@ -917,3 +1749,4 @@ logger.info("mcp_server_mounted", path="/mcp", transport="streamable_http")
 app.mount("/tools/fs", fs_app)
 app.mount("/tools/workspace", workspace_app)
 app.mount("/tools/shell", shell_app)
+app.mount("/tools/git", git_app)

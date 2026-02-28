@@ -130,6 +130,203 @@ class ShellExecuteResponse(BaseModel):
     working_directory: str = Field(..., description="Working directory used")
 
 
+# Git tool models
+
+class GitStatusRequest(BaseModel):
+    """Request model for git_status tool."""
+    repo_path: str = Field(".", description="Repository path relative to workspace")
+    workspace_dir: Optional[str] = Field(None, description="Override workspace directory")
+
+
+class GitStatusResponse(BaseModel):
+    """Response model for git_status tool."""
+    branch: str = Field(..., description="Current branch name")
+    staged: list[dict] = Field(..., description="Staged files with status")
+    unstaged: list[dict] = Field(..., description="Unstaged files with status")
+    untracked: list[str] = Field(..., description="Untracked files")
+    ahead: int = Field(..., description="Commits ahead of remote")
+    behind: int = Field(..., description="Commits behind remote")
+    clean: bool = Field(..., description="Whether working tree is clean")
+
+
+class GitLogRequest(BaseModel):
+    """Request model for git_log tool."""
+    repo_path: str = Field(".", description="Repository path relative to workspace")
+    max_count: int = Field(20, description="Maximum number of commits to return")
+    author: Optional[str] = Field(None, description="Filter by author")
+    since: Optional[str] = Field(None, description="Show commits since date")
+    until: Optional[str] = Field(None, description="Show commits until date")
+    path: Optional[str] = Field(None, description="Filter by file path")
+    format: str = Field("medium", description="Output format: short, medium, or full")
+    workspace_dir: Optional[str] = Field(None, description="Override workspace directory")
+
+
+class GitLogResponse(BaseModel):
+    """Response model for git_log tool."""
+    commits: list[dict] = Field(..., description="List of commits")
+    total_shown: int = Field(..., description="Total number of commits shown")
+
+
+class GitDiffRequest(BaseModel):
+    """Request model for git_diff tool."""
+    repo_path: str = Field(".", description="Repository path relative to workspace")
+    ref: Optional[str] = Field(None, description="Commit/branch to diff against")
+    path: Optional[str] = Field(None, description="Specific file to diff")
+    staged: bool = Field(False, description="Show staged changes")
+    stat_only: bool = Field(False, description="Show only statistics")
+    workspace_dir: Optional[str] = Field(None, description="Override workspace directory")
+
+
+class GitDiffResponse(BaseModel):
+    """Response model for git_diff tool."""
+    diff: str = Field(..., description="Unified diff output")
+    files_changed: int = Field(..., description="Number of files changed")
+    insertions: int = Field(..., description="Number of insertions")
+    deletions: int = Field(..., description="Number of deletions")
+
+
+class GitCommitRequest(BaseModel):
+    """Request model for git_commit tool."""
+    message: str = Field(..., description="Commit message")
+    repo_path: str = Field(".", description="Repository path relative to workspace")
+    files: Optional[list[str]] = Field(None, description="Specific files to stage, or all if empty")
+    workspace_dir: Optional[str] = Field(None, description="Override workspace directory")
+
+
+class GitCommitResponse(BaseModel):
+    """Response model for git_commit tool."""
+    hash: str = Field(..., description="Commit hash")
+    message: str = Field(..., description="Commit message")
+    files_committed: list[str] = Field(..., description="Files included in commit")
+
+
+class GitPushRequest(BaseModel):
+    """Request model for git_push tool."""
+    repo_path: str = Field(".", description="Repository path relative to workspace")
+    remote: str = Field("origin", description="Remote name")
+    branch: Optional[str] = Field(None, description="Branch name (current branch if not specified)")
+    force: bool = Field(False, description="Force push")
+    workspace_dir: Optional[str] = Field(None, description="Override workspace directory")
+
+
+class GitPushResponse(BaseModel):
+    """Response model for git_push tool."""
+    remote: str = Field(..., description="Remote name")
+    branch: str = Field(..., description="Branch name")
+    commits_pushed: int = Field(..., description="Number of commits pushed")
+    output: str = Field(..., description="Git command output")
+
+
+class GitPullRequest(BaseModel):
+    """Request model for git_pull tool."""
+    repo_path: str = Field(".", description="Repository path relative to workspace")
+    remote: str = Field("origin", description="Remote name")
+    branch: Optional[str] = Field(None, description="Branch name")
+    rebase: bool = Field(False, description="Use rebase instead of merge")
+    workspace_dir: Optional[str] = Field(None, description="Override workspace directory")
+
+
+class GitPullResponse(BaseModel):
+    """Response model for git_pull tool."""
+    updated: bool = Field(..., description="Whether repository was updated")
+    commits_received: int = Field(..., description="Number of commits received")
+    files_changed: list[str] = Field(..., description="Files that were changed")
+    output: str = Field(..., description="Git command output")
+
+
+class GitCheckoutRequest(BaseModel):
+    """Request model for git_checkout tool."""
+    target: str = Field(..., description="Branch name or commit hash")
+    repo_path: str = Field(".", description="Repository path relative to workspace")
+    create: bool = Field(False, description="Create new branch")
+    workspace_dir: Optional[str] = Field(None, description="Override workspace directory")
+
+
+class GitCheckoutResponse(BaseModel):
+    """Response model for git_checkout tool."""
+    branch: str = Field(..., description="Current branch after checkout")
+    previous_branch: str = Field(..., description="Previous branch")
+    output: str = Field(..., description="Git command output")
+
+
+class GitBranchRequest(BaseModel):
+    """Request model for git_branch tool."""
+    name: str = Field(..., description="Branch name")
+    repo_path: str = Field(".", description="Repository path relative to workspace")
+    action: str = Field("create", description="Action: create or delete")
+    force: bool = Field(False, description="Force operation")
+    workspace_dir: Optional[str] = Field(None, description="Override workspace directory")
+
+
+class GitBranchResponse(BaseModel):
+    """Response model for git_branch tool."""
+    branch: str = Field(..., description="Branch name")
+    action: str = Field(..., description="Action performed")
+    output: str = Field(..., description="Git command output")
+
+
+class GitListBranchesRequest(BaseModel):
+    """Request model for git_list_branches tool."""
+    repo_path: str = Field(".", description="Repository path relative to workspace")
+    remote: bool = Field(False, description="Include remote branches")
+    workspace_dir: Optional[str] = Field(None, description="Override workspace directory")
+
+
+class GitListBranchesResponse(BaseModel):
+    """Response model for git_list_branches tool."""
+    branches: list[dict] = Field(..., description="List of branches")
+
+
+class GitStashRequest(BaseModel):
+    """Request model for git_stash tool."""
+    repo_path: str = Field(".", description="Repository path relative to workspace")
+    action: str = Field("push", description="Action: push, pop, list, or drop")
+    message: Optional[str] = Field(None, description="Stash message (for push)")
+    index: Optional[int] = Field(None, description="Stash index (for pop/drop)")
+    workspace_dir: Optional[str] = Field(None, description="Override workspace directory")
+
+
+class GitStashResponse(BaseModel):
+    """Response model for git_stash tool."""
+    action: str = Field(..., description="Action performed")
+    stashes: Optional[list[dict]] = Field(None, description="List of stashes (for list action)")
+    output: str = Field(..., description="Git command output")
+
+
+class GitShowRequest(BaseModel):
+    """Request model for git_show tool."""
+    repo_path: str = Field(".", description="Repository path relative to workspace")
+    ref: str = Field("HEAD", description="Commit reference")
+    workspace_dir: Optional[str] = Field(None, description="Override workspace directory")
+
+
+class GitShowResponse(BaseModel):
+    """Response model for git_show tool."""
+    hash: str = Field(..., description="Commit hash")
+    author: str = Field(..., description="Commit author")
+    date: str = Field(..., description="Commit date")
+    message: str = Field(..., description="Commit message")
+    body: str = Field(..., description="Commit body")
+    diff: str = Field(..., description="Commit diff")
+    files_changed: list[str] = Field(..., description="Files changed in commit")
+
+
+class GitRemoteRequest(BaseModel):
+    """Request model for git_remote tool."""
+    repo_path: str = Field(".", description="Repository path relative to workspace")
+    action: str = Field("list", description="Action: list, add, or remove")
+    name: Optional[str] = Field(None, description="Remote name")
+    url: Optional[str] = Field(None, description="Remote URL")
+    workspace_dir: Optional[str] = Field(None, description="Override workspace directory")
+
+
+class GitRemoteResponse(BaseModel):
+    """Response model for git_remote tool."""
+    remotes: list[dict] = Field(..., description="List of remotes")
+    action: str = Field(..., description="Action performed")
+    output: Optional[str] = Field(None, description="Git command output")
+
+
 # Error response model
 
 class ErrorResponse(BaseModel):

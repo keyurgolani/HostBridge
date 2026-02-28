@@ -28,6 +28,11 @@ Built-in admin dashboard provides human oversight, HITL (Human-in-the-Loop) appr
   - List directory contents with recursive traversal
   - Search files by name or content with regex support
 - **Shell Execution:** Execute commands with security controls and allowlisting
+- **Git Tools:** Complete Git repository management
+  - Status, log, diff, show, branches, remotes
+  - Commit, push, pull, checkout, stash operations
+  - HITL approval for write operations
+  - Support for authentication via environment variables
 - **Workspace Management:** Secure path resolution and boundary enforcement
 - **HITL System:** Real-time approval workflow for sensitive operations
 - **Admin Dashboard:** Premium UI with real-time updates
@@ -38,7 +43,6 @@ Built-in admin dashboard provides human oversight, HITL (Human-in-the-Loop) appr
 
 ### 🚧 Coming Soon
 
-- Git tools (status, commit, push, pull, etc.)
 - Docker container management
 - HTTP client with SSRF protection
 - Knowledge graph memory system
@@ -84,6 +88,16 @@ curl -X POST http://localhost:8080/api/tools/fs/search \
 curl -X POST http://localhost:8080/api/tools/shell/execute \
   -H "Content-Type: application/json" \
   -d '{"command": "ls -la"}'
+
+# Check git repository status
+curl -X POST http://localhost:8080/api/tools/git/status \
+  -H "Content-Type: application/json" \
+  -d '{"repo_path": "."}'
+
+# View git commit history
+curl -X POST http://localhost:8080/api/tools/git/log \
+  -H "Content-Type: application/json" \
+  -d '{"repo_path": ".", "max_count": 10}'
 
 # Write a file (triggers HITL for .conf files)
 curl -X POST http://localhost:8080/api/tools/fs/write \
@@ -206,13 +220,27 @@ http://localhost:8080/admin/
   - HITL for non-allowlisted or unsafe commands
   - Output truncation and timeout support
 
+### Git
+
+- `git_status` - Get repository status (branch, staged, unstaged, untracked files)
+- `git_log` - View commit history with filtering options
+- `git_diff` - View file differences (unstaged, staged, or against ref)
+- `git_show` - Show commit details with full diff
+- `git_list_branches` - List local and remote branches
+- `git_remote` - Manage remote repositories
+- `git_commit` - Create commits (HITL required)
+- `git_push` - Push to remote (HITL required)
+- `git_pull` - Pull from remote
+- `git_checkout` - Switch branches or restore files (HITL required)
+- `git_branch` - Create or delete branches (HITL for delete)
+- `git_stash` - Stash operations (push, pop, list, drop)
+
 ### Workspace
 
 - `workspace_info` - Get workspace configuration and disk usage
 
 ### Coming Soon
 
-- `git_*` - Git operations (status, commit, push, pull, etc.)
 - `docker_*` - Docker management (list, inspect, logs, control)
 - `http_request` - HTTP client with SSRF protection
 - `memory_*` - Knowledge graph storage and retrieval
@@ -344,8 +372,13 @@ npm run dev
 - fs_search with regex support
 - shell_execute with security controls
 
+### ✅ Git Tools (Complete)
+- Read-only: status, log, diff, show, list_branches, remote, stash
+- Write operations: commit, push, pull, checkout, branch (with HITL)
+- Git authentication support via environment variables
+- Comprehensive test coverage (27 unit tests, 12 integration tests)
+
 ### 📋 Upcoming Features
-- Git tools (status, commit, push, pull, etc.)
 - Docker tools (container management)
 - Secret management with template resolution
 - HTTP client with SSRF protection
@@ -418,11 +451,12 @@ Built following the design principles from:
 
 The project includes comprehensive test coverage:
 
-- **131 tests** covering all functionality
+- **166 tests** covering all functionality
 - **Unit tests** for individual components
 - **Integration tests** for API endpoints
 - **MCP protocol tests** for Streamable HTTP transport
 - **HITL workflow tests** for approval system
 - **Security tests** for workspace boundaries
+- **Git tools tests** (27 unit tests, 12 integration tests)
 
 All tests pass with zero warnings and clean exit.

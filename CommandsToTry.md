@@ -154,6 +154,117 @@ Before trying file operations, it's helpful to understand the workspace configur
 **"Run 'curl https://api.example.com > output.txt'"**
 - Commands with redirects require approval
 
+## Git Tools
+
+### Repository Status
+
+**"What's the status of the git repository?"**
+- Shows current branch, staged/unstaged files, and untracked files
+
+**"Check the git status of the project"**
+- Returns branch info, commits ahead/behind, and working tree status
+
+**"Show me what files have changed in the repository"**
+- Lists modified, staged, and untracked files
+
+### Commit History
+
+**"Show me the last 10 commits"**
+- Displays recent commit history with hashes, authors, and messages
+
+**"View the commit history for the last week"**
+- Filters commits by date range
+
+**"Show commits by John Doe"**
+- Filters commit history by author
+
+**"What commits modified README.md?"**
+- Shows commit history for a specific file
+
+### Viewing Changes
+
+**"Show me the diff of uncommitted changes"**
+- Displays unstaged changes in unified diff format
+
+**"What changes are staged for commit?"**
+- Shows diff of staged changes
+
+**"Compare current state with the last commit"**
+- Shows differences between working tree and HEAD
+
+**"Show me just the statistics of changes"**
+- Returns files changed, insertions, and deletions counts
+
+### Commit Details
+
+**"Show me the details of the last commit"**
+- Displays full commit information including diff
+
+**"What did commit abc123 change?"**
+- Shows specific commit details by hash
+
+**"Show me the full diff for HEAD"**
+- Displays complete commit information with changes
+
+### Branch Management
+
+**"List all branches in the repository"**
+- Shows local branches with current branch indicator
+
+**"Show me all branches including remote ones"**
+- Lists both local and remote branches
+
+**"Create a new branch called feature-x"**
+- Creates a new branch from current HEAD
+
+**"Switch to the develop branch"** (requires HITL approval)
+- Checks out a different branch
+
+**"Delete the old-feature branch"** (requires HITL approval)
+- Removes a branch (with safety checks)
+
+### Remote Operations
+
+**"List all configured remotes"**
+- Shows remote repositories with fetch/push URLs
+
+**"Add a remote called upstream with URL https://github.com/user/repo.git"**
+- Configures a new remote repository
+
+**"Remove the old-remote remote"**
+- Deletes a remote configuration
+
+### Stash Operations
+
+**"Stash my current changes"**
+- Saves working directory changes to stash
+
+**"List all stashes"**
+- Shows all saved stashes with messages
+
+**"Apply the most recent stash"**
+- Restores stashed changes
+
+**"Drop stash 0"**
+- Removes a specific stash
+
+### Write Operations (Require HITL Approval)
+
+**"Commit the staged changes with message 'Add new feature'"** (requires approval)
+- Creates a new commit with specified message
+
+**"Commit all changes with message 'Update documentation'"** (requires approval)
+- Stages all changes and creates a commit
+
+**"Push changes to origin main"** (requires approval)
+- Pushes commits to remote repository
+
+**"Pull latest changes from origin"**
+- Fetches and merges changes from remote
+
+**"Checkout the feature branch"** (requires approval)
+- Switches to a different branch
+
 ## Understanding Tool Behavior
 
 ### Security and Boundaries
@@ -259,6 +370,20 @@ As of this version, HostBridge supports:
     - Dangerous metacharacter detection (;, |, &, >, <, etc.)
     - HITL for non-allowlisted or unsafe commands
 
+- **Git Tools** (category: `git`)
+  - `git_status` - Get repository status (branch, staged, unstaged, untracked)
+  - `git_log` - View commit history with filtering options
+  - `git_diff` - View file differences (unstaged, staged, or against ref)
+  - `git_show` - Show commit details with full diff
+  - `git_list_branches` - List local and remote branches
+  - `git_remote` - Manage remote repositories (list, add, remove)
+  - `git_commit` - Create commits (HITL required)
+  - `git_push` - Push to remote (HITL required)
+  - `git_pull` - Pull from remote
+  - `git_checkout` - Switch branches or restore files (HITL required)
+  - `git_branch` - Create or delete branches (HITL for delete)
+  - `git_stash` - Stash operations (push, pop, list, drop)
+
 - **Workspace Tools** (category: `workspace`)
   - `workspace_info` - Get workspace configuration and boundaries
 
@@ -271,6 +396,18 @@ When using MCP clients (Claude Desktop, Cursor, etc.), tools are identified by t
 - `fs_list` - List directories
 - `fs_search` - Search files
 - `shell_execute` - Execute shell commands
+- `git_status` - Git repository status
+- `git_log` - Git commit history
+- `git_diff` - Git file differences
+- `git_show` - Git commit details
+- `git_list_branches` - Git branch list
+- `git_remote` - Git remote management
+- `git_commit` - Git commit creation
+- `git_push` - Git push to remote
+- `git_pull` - Git pull from remote
+- `git_checkout` - Git checkout branch
+- `git_branch` - Git branch operations
+- `git_stash` - Git stash operations
 - `workspace_info` - Workspace information
 
 ### OpenAPI Endpoints
@@ -282,13 +419,24 @@ When using REST API directly:
 - `POST /api/tools/fs/list` - List directories
 - `POST /api/tools/fs/search` - Search files
 - `POST /api/tools/shell/execute` - Execute shell commands
+- `POST /api/tools/git/status` - Git repository status
+- `POST /api/tools/git/log` - Git commit history
+- `POST /api/tools/git/diff` - Git file differences
+- `POST /api/tools/git/show` - Git commit details
+- `POST /api/tools/git/list_branches` - Git branch list
+- `POST /api/tools/git/remote` - Git remote management
+- `POST /api/tools/git/commit` - Git commit creation
+- `POST /api/tools/git/push` - Git push to remote
+- `POST /api/tools/git/pull` - Git pull from remote
+- `POST /api/tools/git/checkout` - Git checkout branch
+- `POST /api/tools/git/branch` - Git branch operations
+- `POST /api/tools/git/stash` - Git stash operations
 - `POST /api/tools/workspace/info` - Workspace information
 
 ## Future Tools (Coming Soon)
 
 The following tools are planned for future releases:
 
-- **Git Tools** - Status, commit, push, pull, branch management
 - **Docker Tools** - Container management, image operations
 - **HTTP Tools** - Make HTTP requests with authentication and SSRF protection
 - **Memory Tools** - Knowledge graph storage for persistent information
