@@ -3,7 +3,7 @@
 import os
 from pathlib import Path
 
-from src.models import FsReadRequest, FsReadResponse
+from src.models import FsReadRequest, FsReadResponse, FsWriteRequest, FsWriteResponse
 from src.workspace import WorkspaceManager, SecurityError
 from src.logging_config import get_logger
 
@@ -109,3 +109,78 @@ class FilesystemTools:
             line_count=line_count,
             encoding=request.encoding,
         )
+
+    async def write(self, request: FsWriteRequest) -> FsWriteResponse:
+        """Write content to a file.
+        
+        Args:
+            request: Write request
+            
+        Returns:
+            Write result with path and bytes written
+            
+        Raises:
+            SecurityError: If path escapes workspace
+            ValueError: If parameters are invalid
+        """
+        # Resolve path with security checks
+        resolved_path = self.workspace.resolve_path(
+            request.path,
+            request.workspace_dir,
+        )
+        
+        # Check if file exists
+        file_exists = os.path.exists(resolved_path)
+        
+        # Validate mode
+        if request.mode not in ("create", "overwrite", "append"):
+            raise ValueError(
+                f"Invalid mode '{request.mode}'. "
+                f"Must be 'create', 'overwrite', or 'append'."
+            )
+        
+        # Check mode constraints
+        if request.mode == "create" and file_exists:
+            raise ValueError(
+                f"File already exists: {request.path}. "
+                f"Use mode='overwrite' to replace or mode='append' to add content."
+            )
+        
+        # Create parent directories if needed
+        if request.create_dirs:
+            parent_dir = os.path.dirname(resolved_path)
+            if parent_dir:
+                os.makedirs(parent_dir, exist_ok=True)
+                logger.info("created_directories", path=parent_dir)
+        
+        # Determine write mode
+        if request.mode == "append":
+            write_mode = "a"
+        else:
+            write_mode = "w"
+        
+        # Write content
+        try:
+            with open(resolved_path, write_mode, encoding=request.encoding) as f:
+                f.write(request.content)
+            
+            bytes_written = len(request.content.encode(request.encoding))
+            
+            logger.info(
+                "file_written",
+                path=resolved_path,
+                bytes_written=bytes_written,
+                mode=request.mode,
+                created=not file_exists,
+            )
+            
+            return FsWriteResponse(
+                path=resolved_path,
+                bytes_written=bytes_written,
+                created=not file_exists,
+                mode=request.mode,
+            )
+        
+        except Exception as e:
+            logger.error("file_write_error", path=resolved_path, error=str(e), exc_info=True)
+            raise ValueError(f"Failed to write file: {str(e)}")

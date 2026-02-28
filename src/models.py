@@ -25,6 +25,24 @@ class FsReadResponse(BaseModel):
     encoding: str = Field(..., description="File encoding used")
 
 
+class FsWriteRequest(BaseModel):
+    """Request model for fs_write tool."""
+    path: str = Field(..., description="File path relative to workspace")
+    content: str = Field(..., description="Content to write")
+    workspace_dir: Optional[str] = Field(None, description="Override workspace directory")
+    mode: str = Field("create", description="Write mode: 'create', 'overwrite', or 'append'")
+    create_dirs: bool = Field(True, description="Create parent directories if they don't exist")
+    encoding: str = Field("utf-8", description="File encoding")
+
+
+class FsWriteResponse(BaseModel):
+    """Response model for fs_write tool."""
+    path: str = Field(..., description="Resolved absolute path")
+    bytes_written: int = Field(..., description="Number of bytes written")
+    created: bool = Field(..., description="Whether file was newly created")
+    mode: str = Field(..., description="Write mode used")
+
+
 # Workspace tool models
 
 class WorkspaceInfoResponse(BaseModel):

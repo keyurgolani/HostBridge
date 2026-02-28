@@ -7,9 +7,11 @@ HostBridge exposes host-machine management capabilities to LLM applications via 
 ## Features
 
 - **Dual Protocol Support**: Serve tools via both OpenAPI (REST) and MCP (Model Context Protocol)
+- **Human-in-the-Loop (HITL)**: Real-time approval system for sensitive operations via WebSocket
 - **Security First**: Workspace sandboxing, path traversal prevention, and comprehensive security checks
 - **Policy Engine**: Configurable allow/block/HITL rules per tool with pattern matching
 - **Complete Audit Trail**: SQLite-based logging of all tool executions with request/response capture
+- **File Management**: Read and write files with create/overwrite/append modes
 - **Flexible Registration**: Single endpoint for all tools or per-category endpoints for granular control
 - **LLM-Optimized**: Flat parameter structures and exhaustive descriptions for better tool selection
 
@@ -98,6 +100,34 @@ curl -X POST http://localhost:8080/api/tools/fs/read \
   -d '{"path": "large_file.txt", "max_lines": 100}'
 ```
 
+#### Write File
+
+Write content to files with multiple modes:
+
+```bash
+# Create new file
+curl -X POST http://localhost:8080/api/tools/fs/write \
+  -H "Content-Type: application/json" \
+  -d '{"path": "newfile.txt", "content": "Hello, World!", "mode": "create"}'
+
+# Overwrite existing file
+curl -X POST http://localhost:8080/api/tools/fs/write \
+  -H "Content-Type: application/json" \
+  -d '{"path": "existing.txt", "content": "New content", "mode": "overwrite"}'
+
+# Append to file
+curl -X POST http://localhost:8080/api/tools/fs/write \
+  -H "Content-Type: application/json" \
+  -d '{"path": "log.txt", "content": "\nNew log entry", "mode": "append"}'
+
+# Create nested directories
+curl -X POST http://localhost:8080/api/tools/fs/write \
+  -H "Content-Type: application/json" \
+  -d '{"path": "nested/deep/file.txt", "content": "Content", "mode": "create", "create_dirs": true}'
+```
+
+**Note**: Writing to configuration files (*.conf, *.env, *.yaml, *.yml) requires HITL approval by default.
+
 ### Integration with LLM Applications
 
 #### Open WebUI
@@ -113,6 +143,73 @@ Register the OpenAPI endpoint:
 - All tools: `http://localhost:8080/openapi.json`
 - Filesystem only: `http://localhost:8080/tools/fs/openapi.json`
 - Workspace only: `http://localhost:8080/tools/workspace/openapi.json`
+
+## Human-in-the-Loop (HITL) System
+
+HostBridge includes a real-time approval system for sensitive operations. When a tool call requires approval, the HTTP connection blocks while waiting for admin decision via WebSocket.
+
+### How It Works
+
+1. LLM makes a tool call that requires approval (e.g., writing to a config file)
+2. Server creates HITL request and holds the connection
+3. Admin receives real-time notification via WebSocket
+4. Admin approves or rejects the request
+5. Server executes (if approved) or returns error (if rejected)
+6. LLM receives the result
+
+This is completely transparent to the LLM - it simply experiences a slow tool call.
+
+### WebSocket Connection
+
+Connect to the HITL WebSocket endpoint:
+
+```javascript
+const ws = new WebSocket('ws://localhost:8080/ws/hitl');
+
+ws.onmessage = (event) => {
+  const data = JSON.parse(event.data);
+  
+  if (data.type === 'hitl_request') {
+    const request = data.data;
+    console.log('Approval needed:', request.tool_name);
+    console.log('Parameters:', request.request_params);
+    
+    // Send approval
+    ws.send(JSON.stringify({
+      type: 'hitl_decision',
+      data: {
+        id: request.id,
+        decision: 'approve',  // or 'reject'
+        note: 'Looks safe'
+      }
+    }));
+  }
+};
+```
+
+### HITL Configuration
+
+Configure which operations require approval in `config.yaml`:
+
+```yaml
+hitl:
+  default_ttl_seconds: 300  # 5 minutes timeout
+
+tools:
+  fs:
+    write:
+      policy: "allow"
+      hitl_patterns:
+        - "*.conf"
+        - "*.env"
+        - "*.yaml"
+        - "*.yml"
+      block_patterns:
+        - "*.exe"
+        - "*.bin"
+```
+
+**Note**: An admin dashboard for HITL management is planned for a future release.
 
 ### Registration Modes
 
@@ -324,15 +421,15 @@ File doesn't exist. Use `workspace_info` to check workspace path.
 ## Roadmap
 
 Planned features:
-- HITL (Human-in-the-Loop) approval system
-- Admin dashboard for monitoring and approval
-- Additional filesystem tools (write, list, search)
+- Admin dashboard for HITL monitoring and approval
+- Additional filesystem tools (list, search)
 - Git tools (status, commit, push, pull)
 - Docker container management tools
 - Secret management with template resolution
 - HTTP client tool
 - Memory/knowledge graph tools
 - Plan/DAG execution tools
+- MCP protocol support (currently OpenAPI only)
 
 ## Contributing
 

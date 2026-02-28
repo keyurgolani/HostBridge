@@ -14,11 +14,14 @@ from src.logging_config import setup_logging, get_logger
 from src.workspace import WorkspaceManager, SecurityError
 from src.audit import AuditLogger
 from src.policy import PolicyEngine
+from src.hitl import HITLManager
 from src.tools.fs_tools import FilesystemTools
 from src.tools.workspace_tools import WorkspaceTools
 from src.models import (
     FsReadRequest,
     FsReadResponse,
+    FsWriteRequest,
+    FsWriteResponse,
     WorkspaceInfoResponse,
     ErrorResponse,
 )
@@ -33,6 +36,7 @@ db = Database()
 workspace_manager = WorkspaceManager(config.workspace.base_dir)
 audit_logger = AuditLogger(db)
 policy_engine = PolicyEngine(config)
+hitl_manager = HITLManager(db, config.hitl.default_ttl_seconds)
 
 # Initialize tools
 fs_tools = FilesystemTools(workspace_manager)
@@ -45,12 +49,14 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info("starting_hostbridge", version="0.1.0")
     await db.connect()
+    await hitl_manager.start()
     logger.info("hostbridge_started")
     
     yield
     
     # Shutdown
     logger.info("shutting_down_hostbridge")
+    await hitl_manager.stop()
     await db.close()
     logger.info("hostbridge_stopped")
 
@@ -186,10 +192,56 @@ async def execute_tool(
         
         raise SecurityError(f"Operation blocked: {reason}")
     
-    # TODO: HITL implementation in Slice 2
+    # HITL handling
     if decision == "hitl":
-        logger.warning("hitl_not_implemented", tool=f"{tool_category}_{tool_name}")
-        # For now, allow it (HITL will be implemented in Slice 2)
+        logger.info("hitl_required", tool=f"{tool_category}_{tool_name}", reason=reason)
+        
+        # Create HITL request
+        hitl_request = await hitl_manager.create_request(
+            tool_name=tool_name,
+            tool_category=tool_category,
+            request_params=params,
+            request_context={"protocol": protocol},
+            policy_rule_matched=reason,
+        )
+        
+        # Wait for decision (this blocks the HTTP connection)
+        decision_result = await hitl_manager.wait_for_decision(hitl_request.id)
+        
+        if decision_result == "rejected":
+            # Log rejected execution
+            await audit_logger.log_execution(
+                tool_name=tool_name,
+                tool_category=tool_category,
+                protocol=protocol,
+                request_params=params,
+                status="hitl_rejected",
+                error_message="Operation rejected by administrator",
+                hitl_request_id=hitl_request.id,
+            )
+            
+            raise SecurityError(
+                "Operation not permitted. The request was reviewed and rejected."
+            )
+        
+        elif decision_result == "expired":
+            # Log expired execution
+            await audit_logger.log_execution(
+                tool_name=tool_name,
+                tool_category=tool_category,
+                protocol=protocol,
+                request_params=params,
+                status="hitl_expired",
+                error_message="Operation timed out waiting for approval",
+                hitl_request_id=hitl_request.id,
+            )
+            
+            raise TimeoutError(
+                "Operation timed out waiting for processing. Please try again later."
+            )
+        
+        # If approved, continue with execution
+        logger.info("hitl_approved_executing", tool=f"{tool_category}_{tool_name}")
     
     # Execute tool
     try:
@@ -203,7 +255,7 @@ async def execute_tool(
             protocol=protocol,
             request_params=params,
             response_body=result.model_dump() if hasattr(result, "model_dump") else result,
-            status="success",
+            status="success" if decision != "hitl" else "hitl_approved",
             duration_ms=duration_ms,
             workspace_dir=workspace_manager.base_dir,
         )
@@ -363,4 +415,178 @@ if __name__ == "__main__":
         host=config.server.host,
         port=config.server.port,
         reload=True,
+    )
+
+
+# WebSocket endpoint for HITL
+from fastapi import WebSocket, WebSocketDisconnect
+import json
+
+class ConnectionManager:
+    """Manage WebSocket connections."""
+    
+    def __init__(self):
+        self.active_connections: list[WebSocket] = []
+    
+    async def connect(self, websocket: WebSocket):
+        await websocket.accept()
+        self.active_connections.append(websocket)
+        logger.info("websocket_connected", total_connections=len(self.active_connections))
+    
+    def disconnect(self, websocket: WebSocket):
+        self.active_connections.remove(websocket)
+        logger.info("websocket_disconnected", total_connections=len(self.active_connections))
+    
+    async def broadcast(self, message: dict):
+        """Broadcast message to all connected clients."""
+        disconnected = []
+        for connection in self.active_connections:
+            try:
+                await connection.send_json(message)
+            except Exception as e:
+                logger.error("websocket_send_error", error=str(e))
+                disconnected.append(connection)
+        
+        # Clean up disconnected clients
+        for connection in disconnected:
+            if connection in self.active_connections:
+                self.active_connections.remove(connection)
+
+connection_manager = ConnectionManager()
+
+# Register WebSocket callback with HITL manager
+async def hitl_websocket_callback(event_type: str, data: dict):
+    """Callback for HITL events to broadcast via WebSocket."""
+    await connection_manager.broadcast({
+        "type": event_type,
+        "data": data,
+    })
+
+hitl_manager.register_websocket_callback(hitl_websocket_callback)
+
+
+@app.websocket("/ws/hitl")
+async def websocket_hitl(websocket: WebSocket):
+    """WebSocket endpoint for HITL notifications and decisions."""
+    await connection_manager.connect(websocket)
+    
+    try:
+        # Send current pending requests
+        pending = hitl_manager.get_pending_requests()
+        await websocket.send_json({
+            "type": "pending_requests",
+            "data": [req.to_dict() for req in pending],
+        })
+        
+        # Listen for decisions
+        while True:
+            data = await websocket.receive_json()
+            
+            if data.get("type") == "hitl_decision":
+                decision_data = data.get("data", {})
+                request_id = decision_data.get("id")
+                decision = decision_data.get("decision")
+                note = decision_data.get("note")
+                
+                if not request_id or not decision:
+                    await websocket.send_json({
+                        "type": "error",
+                        "data": {"message": "Missing required fields: id and decision"},
+                    })
+                    continue
+                
+                try:
+                    if decision == "approve":
+                        await hitl_manager.approve(request_id, reviewer="admin", note=note)
+                        await websocket.send_json({
+                            "type": "decision_accepted",
+                            "data": {"id": request_id, "decision": "approved"},
+                        })
+                    elif decision == "reject":
+                        await hitl_manager.reject(request_id, reviewer="admin", note=note)
+                        await websocket.send_json({
+                            "type": "decision_accepted",
+                            "data": {"id": request_id, "decision": "rejected"},
+                        })
+                    else:
+                        await websocket.send_json({
+                            "type": "error",
+                            "data": {"message": f"Invalid decision: {decision}"},
+                        })
+                
+                except ValueError as e:
+                    await websocket.send_json({
+                        "type": "error",
+                        "data": {"message": str(e)},
+                    })
+    
+    except WebSocketDisconnect:
+        connection_manager.disconnect(websocket)
+    except Exception as e:
+        logger.error("websocket_error", error=str(e), exc_info=True)
+        connection_manager.disconnect(websocket)
+
+
+# fs_write endpoints
+@app.post(
+    "/api/tools/fs/write",
+    operation_id="fs_write",
+    summary="Write File",
+    description="""Write content to a file at the specified path.
+
+The path is relative to the workspace directory unless an absolute 
+path within the workspace is provided.
+
+Use this tool when you need to:
+- Create new files
+- Update existing files
+- Append content to files
+- Save generated content
+
+Required: path, content
+Optional: mode ('create', 'overwrite', 'append'), workspace_dir, create_dirs, encoding
+
+Note: Writing to configuration files (*.conf, *.env, *.yaml, *.yml) requires approval.""",
+    response_model=FsWriteResponse,
+    tags=["filesystem"],
+)
+async def fs_write_root(request: FsWriteRequest) -> FsWriteResponse:
+    """Write file contents (root app endpoint)."""
+    return await execute_tool(
+        "fs",
+        "write",
+        request.model_dump(),
+        lambda: fs_tools.write(request),
+    )
+
+
+@fs_app.post(
+    "/write",
+    operation_id="fs_write",
+    summary="Write File",
+    description="""Write content to a file at the specified path.
+
+The path is relative to the workspace directory unless an absolute 
+path within the workspace is provided.
+
+Use this tool when you need to:
+- Create new files
+- Update existing files
+- Append content to files
+- Save generated content
+
+Required: path, content
+Optional: mode ('create', 'overwrite', 'append'), workspace_dir, create_dirs, encoding
+
+Note: Writing to configuration files (*.conf, *.env, *.yaml, *.yml) requires approval.""",
+    response_model=FsWriteResponse,
+    tags=["filesystem"],
+)
+async def fs_write_sub(request: FsWriteRequest) -> FsWriteResponse:
+    """Write file contents (sub-app endpoint)."""
+    return await execute_tool(
+        "fs",
+        "write",
+        request.model_dump(),
+        lambda: fs_tools.write(request),
     )
