@@ -525,7 +525,15 @@ async def websocket_hitl(websocket: WebSocket):
         while True:
             data = await websocket.receive_json()
             
-            if data.get("type") == "hitl_decision":
+            if data.get("type") == "request_pending":
+                # Client is requesting current pending requests
+                pending = hitl_manager.get_pending_requests()
+                await websocket.send_json({
+                    "type": "pending_requests",
+                    "data": [req.to_dict() for req in pending],
+                })
+            
+            elif data.get("type") == "hitl_decision":
                 decision_data = data.get("data", {})
                 request_id = decision_data.get("id")
                 decision = decision_data.get("decision")

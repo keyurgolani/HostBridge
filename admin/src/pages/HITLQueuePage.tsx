@@ -13,7 +13,14 @@ export default function HITLQueuePage() {
   const [selectedRequest, setSelectedRequest] = useState<HITLRequest | null>(null)
 
   useEffect(() => {
-    wsClient.connect()
+    // Connect to WebSocket if not already connected
+    if (!wsClient.isConnected()) {
+      wsClient.connect()
+    }
+
+    // Request current pending requests when component mounts
+    // This ensures we get the latest state even if WebSocket was already connected
+    wsClient.requestPendingRequests()
 
     const unsubscribe = wsClient.onMessage((message) => {
       if (message.type === 'pending_requests') {
@@ -41,9 +48,9 @@ export default function HITLQueuePage() {
       }
     })
 
+    // Don't disconnect on unmount - keep WebSocket alive for the app
     return () => {
       unsubscribe()
-      wsClient.disconnect()
     }
   }, []) // Empty dependency array - only connect once
 

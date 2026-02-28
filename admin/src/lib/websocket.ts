@@ -58,6 +58,10 @@ export class WebSocketClient {
     }
   }
 
+  isConnected(): boolean {
+    return this.ws?.readyState === WebSocket.OPEN
+  }
+
   private scheduleReconnect() {
     if (this.reconnectTimeout) {
       return
@@ -106,6 +110,12 @@ export class WebSocketClient {
     this.send({
       type: 'hitl_decision',
       data: { id, decision: 'reject', note },
+    })
+  }
+
+  requestPendingRequests() {
+    this.send({
+      type: 'request_pending',
     })
   }
 }
