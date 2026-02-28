@@ -39,13 +39,25 @@ async def client():
     src.database.Database.__init__ = patched_db_init
     
     # Now import the app and initialize database
-    from src.main import app, db
+    from src.main import app, db, mcp, hitl_manager
     
     # Connect to database before tests
     await db.connect()
     
+    # The MCP server's session manager will be started lazily on first request
+    # No need to manually start it - the FastApiHttpSessionManager handles this
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         yield ac
+    
+    # Cleanup: shutdown the MCP transport after tests
+    if hasattr(mcp, '_http_transport') and mcp._http_transport:
+        await mcp._http_transport.shutdown()
+    
+    # Stop HITL manager cleanup task
+    await hitl_manager.stop()
+    
+    # Close database connection
+    await db.close()
 
 
 class TestMCPStreamableHTTP:

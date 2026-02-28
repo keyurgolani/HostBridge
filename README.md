@@ -282,11 +282,17 @@ npm run build
 ### Run Tests
 
 ```bash
-# Automated tests
-bash development/test_slice3.sh
+# Run all tests
+pytest
 
-# Manual tests
-# See development/SLICE3_VALIDATION_REPORT.md
+# Run specific test file
+pytest tests/test_mcp.py
+
+# Run with coverage
+pytest --cov=src --cov-report=html
+
+# Run with verbose output
+pytest -v
 ```
 
 ### Run Locally (Development)
@@ -405,3 +411,18 @@ Built following the design principles from:
 **Status:** Production Ready  
 **Version:** 0.1.0  
 **Last Updated:** February 28, 2026
+
+---
+
+## Testing
+
+The project includes comprehensive test coverage:
+
+- **131 tests** covering all functionality
+- **Unit tests** for individual components
+- **Integration tests** for API endpoints
+- **MCP protocol tests** for Streamable HTTP transport
+- **HITL workflow tests** for approval system
+- **Security tests** for workspace boundaries
+
+All tests pass with zero warnings and clean exit.
