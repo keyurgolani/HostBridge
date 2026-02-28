@@ -2,6 +2,14 @@
 
 This document provides sample requests you can give to an LLM that has access to the HostBridge tool server. These commands demonstrate the capabilities of each tool currently available.
 
+## Protocol Support
+
+HostBridge supports two protocols:
+- **OpenAPI (REST)**: Traditional HTTP REST API
+- **MCP (Model Context Protocol)**: Modern protocol for AI tool integration using Streamable HTTP
+
+Both protocols expose the same tools from a single source of truth - no code duplication.
+
 ## Getting Started
 
 Before trying file operations, it's helpful to understand the workspace configuration:
@@ -136,12 +144,31 @@ When working with an LLM that has access to these tools:
 
 As of this version, HostBridge supports:
 
+- **Health Check** (via MCP: `health_check_health_get`)
+  - Check server health and version
+
 - **Filesystem Tools** (category: `fs`)
   - `fs_read` - Read file contents with optional line ranges and encoding
   - `fs_write` - Write, overwrite, or append to files with security controls
 
 - **Workspace Tools** (category: `workspace`)
   - `workspace_info` - Get workspace configuration and boundaries
+
+### MCP-Specific Tool Names
+
+When using MCP clients (Claude Desktop, Cursor, etc.), tools are identified by their operation IDs:
+- `health_check_health_get` - Health check
+- `fs_read` - Read files
+- `fs_write` - Write files
+- `workspace_info` - Workspace information
+
+### OpenAPI Endpoints
+
+When using REST API directly:
+- `POST /health` - Health check
+- `POST /api/tools/fs/read` - Read files
+- `POST /api/tools/fs/write` - Write files
+- `POST /api/tools/workspace/info` - Workspace information
 
 ## Future Tools (Coming Soon)
 

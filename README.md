@@ -6,7 +6,9 @@ HostBridge exposes host-machine management capabilities to LLM applications via 
 
 ## Features
 
-- **Dual Protocol Support**: Serve tools via both OpenAPI (REST) and MCP (Model Context Protocol)
+- **Dual Protocol Support**: Serve tools via both OpenAPI (REST) and MCP (Model Context Protocol) simultaneously
+- **MCP Streamable HTTP**: Modern MCP transport using Streamable HTTP (not legacy SSE)
+- **Single Source of Truth**: Tools defined once, automatically exposed via both protocols
 - **Human-in-the-Loop (HITL)**: Real-time approval system for sensitive operations via WebSocket
 - **Security First**: Workspace sandboxing, path traversal prevention, and comprehensive security checks
 - **Policy Engine**: Configurable allow/block/HITL rules per tool with pattern matching
@@ -129,6 +131,33 @@ curl -X POST http://localhost:8080/api/tools/fs/write \
 **Note**: Writing to configuration files (*.conf, *.env, *.yaml, *.yml) requires HITL approval by default.
 
 ### Integration with LLM Applications
+
+#### MCP Clients (Claude Desktop, Cursor, etc.)
+
+Configure the MCP server in your client's configuration:
+
+```json
+{
+  "mcpServers": {
+    "hostbridge": {
+      "url": "http://localhost:8080/mcp",
+      "description": "HostBridge - Local filesystem and workspace operations"
+    }
+  }
+}
+```
+
+**Features:**
+- Streamable HTTP transport (modern, recommended)
+- Automatic tool discovery from FastAPI endpoints
+- Session management with session IDs
+- JSON-RPC 2.0 compliant
+
+**Available MCP Tools:**
+- `health_check_health_get` - Server health check
+- `fs_read` - Read file contents
+- `fs_write` - Write/create/append files
+- `workspace_info` - Get workspace configuration
 
 #### Open WebUI
 
@@ -430,7 +459,6 @@ Planned features:
 - HTTP client tool for API requests
 - Memory/knowledge graph tools for persistent storage
 - Plan/DAG execution tools for multi-step workflows
-- MCP protocol support (currently OpenAPI only)
 
 ## Contributing
 

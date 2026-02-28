@@ -36,8 +36,9 @@ class Database:
         self.db_path = db_path
         self._connection: Optional[aiosqlite.Connection] = None
         
-        # Ensure data directory exists
-        Path(db_path).parent.mkdir(parents=True, exist_ok=True)
+        # Ensure data directory exists (only if not in-memory)
+        if db_path != ":memory:":
+            Path(db_path).parent.mkdir(parents=True, exist_ok=True)
     
     async def connect(self):
         """Connect to database and initialize schema."""

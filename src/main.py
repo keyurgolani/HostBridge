@@ -7,6 +7,7 @@ from typing import Any, Dict
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi_mcp import FastApiMCP
 
 from src.config import load_config
 from src.database import Database
@@ -590,3 +591,11 @@ async def fs_write_sub(request: FsWriteRequest) -> FsWriteResponse:
         request.model_dump(),
         lambda: fs_tools.write(request),
     )
+
+
+# Initialize and mount MCP server using Streamable HTTP transport (recommended)
+# IMPORTANT: This must be done AFTER all endpoints are defined, as fastapi-mcp
+# discovers tools at mount time
+mcp = FastApiMCP(app)
+mcp.mount_http()
+logger.info("mcp_server_mounted", path="/mcp", transport="streamable_http")
