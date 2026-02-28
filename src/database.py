@@ -99,6 +99,89 @@ class Database:
             ON audit_log(status)
         """)
         
+        # Memory graph tables
+        await self._connection.execute("""
+            CREATE TABLE IF NOT EXISTS memory_nodes (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                content TEXT NOT NULL,
+                entity_type TEXT NOT NULL DEFAULT 'concept',
+                tags TEXT NOT NULL DEFAULT '[]',
+                metadata TEXT NOT NULL DEFAULT '{}',
+                source TEXT,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+            )
+        """)
+
+        await self._connection.execute("""
+            CREATE VIRTUAL TABLE IF NOT EXISTS memory_nodes_fts USING fts5(
+                name, content, tags,
+                content='memory_nodes', content_rowid='rowid'
+            )
+        """)
+
+        await self._connection.execute("""
+            CREATE TRIGGER IF NOT EXISTS memory_nodes_ai
+            AFTER INSERT ON memory_nodes BEGIN
+                INSERT INTO memory_nodes_fts(rowid, name, content, tags)
+                VALUES (new.rowid, new.name, new.content, new.tags);
+            END
+        """)
+
+        await self._connection.execute("""
+            CREATE TRIGGER IF NOT EXISTS memory_nodes_ad
+            AFTER DELETE ON memory_nodes BEGIN
+                INSERT INTO memory_nodes_fts(memory_nodes_fts, rowid, name, content, tags)
+                VALUES ('delete', old.rowid, old.name, old.content, old.tags);
+            END
+        """)
+
+        await self._connection.execute("""
+            CREATE TRIGGER IF NOT EXISTS memory_nodes_au
+            AFTER UPDATE ON memory_nodes BEGIN
+                INSERT INTO memory_nodes_fts(memory_nodes_fts, rowid, name, content, tags)
+                VALUES ('delete', old.rowid, old.name, old.content, old.tags);
+                INSERT INTO memory_nodes_fts(rowid, name, content, tags)
+                VALUES (new.rowid, new.name, new.content, new.tags);
+            END
+        """)
+
+        await self._connection.execute("""
+            CREATE TABLE IF NOT EXISTS memory_edges (
+                id TEXT PRIMARY KEY,
+                source_id TEXT NOT NULL REFERENCES memory_nodes(id) ON DELETE CASCADE,
+                target_id TEXT NOT NULL REFERENCES memory_nodes(id) ON DELETE CASCADE,
+                relation TEXT NOT NULL,
+                weight REAL NOT NULL DEFAULT 1.0,
+                metadata TEXT NOT NULL DEFAULT '{}',
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                valid_from TEXT,
+                valid_until TEXT,
+                UNIQUE(source_id, target_id, relation)
+            )
+        """)
+
+        await self._connection.execute("""
+            CREATE INDEX IF NOT EXISTS idx_memory_edges_source
+            ON memory_edges(source_id)
+        """)
+
+        await self._connection.execute("""
+            CREATE INDEX IF NOT EXISTS idx_memory_edges_target
+            ON memory_edges(target_id)
+        """)
+
+        await self._connection.execute("""
+            CREATE INDEX IF NOT EXISTS idx_memory_edges_relation
+            ON memory_edges(relation)
+        """)
+
+        await self._connection.execute("""
+            CREATE INDEX IF NOT EXISTS idx_memory_nodes_type
+            ON memory_nodes(entity_type)
+        """)
+
         await self._connection.commit()
         logger.info("database_schema_initialized")
     

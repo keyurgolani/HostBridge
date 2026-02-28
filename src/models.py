@@ -425,6 +425,181 @@ class HttpRequestResponse(BaseModel):
     content_type: Optional[str] = Field(None, description="Response content type")
 
 
+# Memory tool models
+
+class MemoryStoreRelation(BaseModel):
+    """A relation to create when storing a new node."""
+    target_id: str = Field(..., description="Target node ID")
+    relation: str = Field(..., description="Relation type (e.g. 'related_to', 'parent_of')")
+    weight: float = Field(1.0, description="Relation strength (0.0–1.0+)")
+
+
+class MemoryStoreRequest(BaseModel):
+    """Request model for memory_store tool."""
+    content: str = Field(..., description="The atomic piece of knowledge to store")
+    name: Optional[str] = Field(None, description="Short name/title (defaults to first 60 chars of content)")
+    entity_type: str = Field("concept", description="Node type: concept, fact, task, person, event, note")
+    tags: Optional[list[str]] = Field(None, description="Tags for categorization and filtering")
+    metadata: Optional[dict] = Field(None, description="Arbitrary key-value metadata")
+    source: Optional[str] = Field(None, description="Origin of this knowledge (tool name, context, etc.)")
+    relations: Optional[list[MemoryStoreRelation]] = Field(None, description="Edges to create to existing nodes")
+
+
+class MemoryStoreResponse(BaseModel):
+    """Response model for memory_store tool."""
+    id: str = Field(..., description="New node ID (UUID)")
+    name: str = Field(..., description="Node name used")
+    created_at: str = Field(..., description="Creation timestamp (ISO 8601)")
+    relations_created: int = Field(..., description="Number of edges created")
+
+
+class MemoryNode(BaseModel):
+    """A memory knowledge node."""
+    id: str = Field(..., description="Node ID")
+    name: str = Field(..., description="Node name/title")
+    content: str = Field(..., description="Node content")
+    entity_type: str = Field(..., description="Node type")
+    tags: list[str] = Field(..., description="Tags")
+    metadata: dict = Field(..., description="Metadata")
+    source: Optional[str] = Field(None, description="Origin source")
+    created_at: str = Field(..., description="Creation timestamp")
+    updated_at: str = Field(..., description="Last update timestamp")
+
+
+class MemoryRelation(BaseModel):
+    """A relationship edge from/to a memory node."""
+    edge_id: str = Field(..., description="Edge ID")
+    direction: str = Field(..., description="'outgoing' or 'incoming'")
+    relation: str = Field(..., description="Relation type")
+    weight: float = Field(..., description="Relation weight")
+    neighbor: dict = Field(..., description="Connected node summary {id, name, entity_type, content_preview}")
+
+
+class MemoryGetRequest(BaseModel):
+    """Request model for memory_get tool."""
+    id: str = Field(..., description="Node ID to retrieve")
+    include_relations: bool = Field(True, description="Include connected edges and neighbor summaries")
+    depth: int = Field(1, description="Hops of relationships to include (currently only 1 is supported)")
+
+
+class MemoryGetResponse(BaseModel):
+    """Response model for memory_get tool."""
+    node: MemoryNode = Field(..., description="The retrieved node")
+    relations: list[MemoryRelation] = Field(..., description="Edges connected to this node")
+
+
+class MemorySearchRequest(BaseModel):
+    """Request model for memory_search tool."""
+    query: str = Field(..., description="Search text for full-text search")
+    entity_type: Optional[str] = Field(None, description="Filter by entity type")
+    tags: Optional[list[str]] = Field(None, description="Filter by tags (any match)")
+    max_results: int = Field(10, description="Maximum number of results")
+    search_mode: str = Field("hybrid", description="Search mode: 'fulltext', 'tags', or 'hybrid'")
+    include_relations: bool = Field(False, description="Include edges in results")
+    temporal_filter: Optional[str] = Field(None, description="ISO date — only return nodes created on or before this date")
+
+
+class MemorySearchResult(BaseModel):
+    """A single search result."""
+    node: MemoryNode = Field(..., description="The matching node")
+    relevance_score: float = Field(..., description="Relevance score (higher = more relevant)")
+    matched_field: str = Field(..., description="Field that matched: 'content', 'tags', etc.")
+
+
+class MemorySearchResponse(BaseModel):
+    """Response model for memory_search tool."""
+    results: list[MemorySearchResult] = Field(..., description="Ranked search results")
+    total_matches: int = Field(..., description="Total number of matches found")
+    search_time_ms: int = Field(..., description="Search duration in milliseconds")
+
+
+class MemoryUpdateRequest(BaseModel):
+    """Request model for memory_update tool."""
+    id: str = Field(..., description="Node ID to update")
+    content: Optional[str] = Field(None, description="New content (replaces existing)")
+    name: Optional[str] = Field(None, description="New name")
+    tags: Optional[list[str]] = Field(None, description="New tags (replaces existing)")
+    metadata: Optional[dict] = Field(None, description="Metadata to merge into existing")
+
+
+class MemoryUpdateResponse(BaseModel):
+    """Response model for memory_update tool."""
+    node: dict = Field(..., description="Updated node summary {id, name, updated_at}")
+    previous_content: str = Field(..., description="Content before the update (for audit/undo)")
+
+
+class MemoryDeleteRequest(BaseModel):
+    """Request model for memory_delete tool."""
+    id: str = Field(..., description="Node ID to delete")
+    cascade: bool = Field(False, description="Also delete orphaned child nodes (nodes whose only parent was this one)")
+
+
+class MemoryDeleteResponse(BaseModel):
+    """Response model for memory_delete tool."""
+    deleted_node: dict = Field(..., description="Deleted node summary {id, name}")
+    deleted_edges: int = Field(..., description="Number of edges deleted")
+    orphaned_children: list[dict] = Field(..., description="Child nodes that lost their only parent (not deleted unless cascade=true)")
+
+
+class MemoryLinkRequest(BaseModel):
+    """Request model for memory_link tool."""
+    source_id: str = Field(..., description="Source node ID")
+    target_id: str = Field(..., description="Target node ID")
+    relation: str = Field(..., description="Relation type: related_to, depends_on, parent_of, contradicts, supersedes, derived_from")
+    weight: float = Field(1.0, description="Relationship strength (0.0–1.0+)")
+    bidirectional: bool = Field(False, description="Also create the reverse edge")
+    metadata: Optional[dict] = Field(None, description="Edge metadata")
+    valid_from: Optional[str] = Field(None, description="ISO 8601 date when this relationship became true")
+    valid_until: Optional[str] = Field(None, description="ISO 8601 date when this relationship ended (null = current)")
+
+
+class MemoryLinkResponse(BaseModel):
+    """Response model for memory_link tool."""
+    edge: dict = Field(..., description="Edge details {id, source_id, target_id, relation}")
+    created: bool = Field(..., description="True if new edge, False if existing edge was updated")
+
+
+class MemoryChildrenRequest(BaseModel):
+    """Request model for memory_children tool."""
+    id: str = Field(..., description="Parent node ID")
+
+
+class MemoryAncestorsRequest(BaseModel):
+    """Request model for memory_ancestors tool."""
+    id: str = Field(..., description="Node ID to find ancestors of")
+    max_depth: int = Field(10, description="Maximum traversal depth")
+
+
+class MemoryRelatedRequest(BaseModel):
+    """Request model for memory_related tool."""
+    id: str = Field(..., description="Node ID to find related nodes for")
+    relation: Optional[str] = Field(None, description="Filter by specific relation type (empty = all types)")
+
+
+class MemorySubtreeRequest(BaseModel):
+    """Request model for memory_subtree tool."""
+    id: str = Field(..., description="Root node ID")
+    max_depth: int = Field(10, description="Maximum traversal depth")
+
+
+class MemoryNodesResponse(BaseModel):
+    """Response model for graph traversal tools (children, ancestors, roots, related, subtree)."""
+    nodes: list[MemoryNode] = Field(..., description="Matching nodes")
+    total: int = Field(..., description="Total number of nodes returned")
+
+
+class MemoryStatsResponse(BaseModel):
+    """Response model for memory_stats tool."""
+    total_nodes: int = Field(..., description="Total nodes in the knowledge graph")
+    total_edges: int = Field(..., description="Total edges (relationships) in the graph")
+    nodes_by_type: dict = Field(..., description="Node count broken down by entity_type")
+    edges_by_relation: dict = Field(..., description="Edge count broken down by relation type")
+    most_connected_nodes: list[dict] = Field(..., description="Top 10 most connected nodes by edge count")
+    orphaned_nodes: int = Field(..., description="Nodes with no edges at all")
+    created_last_24h: int = Field(..., description="Nodes created in the last 24 hours")
+    tags_frequency: dict = Field(..., description="Tag usage frequency (top 50)")
+
+
 # Error response model
 
 class ErrorResponse(BaseModel):

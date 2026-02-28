@@ -404,6 +404,86 @@ HostBridge resolves `{{secret:KEY}}` placeholders server-side in any tool parame
 **"Check if the database container is running, and if not, start it"** (requires approval)
 - Conditional container management
 
+## Memory Tools (Knowledge Graph)
+
+### Store and Retrieve Knowledge
+
+**"Remember that the production database host is db.prod.internal"**
+- Stores a fact node with entity type `fact`
+
+**"Store this as a concept: Python is a high-level, dynamically-typed programming language"**
+- Creates a named concept node with content
+
+**"What do you know about Python?"** (after storing related nodes)
+- Uses `memory_search` to find relevant nodes via FTS5 BM25 ranking
+
+**"Find everything related to databases"**
+- Searches knowledge graph for database-related nodes
+
+### Linking and Relationships
+
+**"Note that FastAPI depends on Python"**
+- Creates a `depends_on` typed edge from FastAPI node to Python node
+
+**"Mark FastAPI as a child of Python in the knowledge hierarchy"**
+- Creates a `parent_of` edge (Python → FastAPI)
+
+**"What are all the children of the Python node?"**
+- Traverses `parent_of` edges to list direct children
+
+**"What are all the ancestors of the FastAPI node?"**
+- Recursive CTE traversal upward through `parent_of` edges
+
+### Graph Navigation
+
+**"Show me the entire subtree under the Python knowledge node"**
+- Returns all descendants via `memory_subtree` (recursive, configurable depth)
+
+**"What are all root-level knowledge nodes?"**
+- Returns nodes with no incoming `parent_of` edges via `memory_roots`
+
+**"What is FastAPI related to?"**
+- Returns all nodes connected by any edge type via `memory_related`
+
+### Knowledge Management
+
+**"Update the Python node to mention it's version 3.12"**
+- Merges metadata and updates content via `memory_update`
+
+**"Show me knowledge graph statistics"**
+- Returns node/edge counts, type breakdown, tag frequency, most-connected nodes
+
+**"Delete the outdated API endpoint node"** (requires HITL approval)
+- HITL-gated deletion to prevent accidental knowledge loss
+
+### Curl Examples
+
+```bash
+# Store a node
+curl -X POST http://localhost:8080/api/tools/memory/store \
+  -H "Content-Type: application/json" \
+  -d '{"name": "Python", "content": "High-level programming language", "entity_type": "technology", "tags": ["programming", "language"]}'
+
+# Search by text
+curl -X POST http://localhost:8080/api/tools/memory/search \
+  -H "Content-Type: application/json" \
+  -d '{"query": "programming language"}'
+
+# Search by tags only
+curl -X POST http://localhost:8080/api/tools/memory/search \
+  -H "Content-Type: application/json" \
+  -d '{"query": "", "tags": ["programming"], "search_mode": "tags"}'
+
+# Create a relationship
+curl -X POST http://localhost:8080/api/tools/memory/link \
+  -H "Content-Type: application/json" \
+  -d '{"source_id": "<parent-id>", "target_id": "<child-id>", "relation": "parent_of"}'
+
+# Get graph statistics
+curl -X POST http://localhost:8080/api/tools/memory/stats \
+  -H "Content-Type: application/json" -d '{}'
+```
+
 ## Understanding Tool Behavior
 
 ### Security and Boundaries
@@ -584,6 +664,18 @@ When using MCP clients (Claude Desktop, Cursor, etc.), tools are identified by t
 - `workspace_info` - Workspace information
 - `workspace_secrets_list` - List secret key names
 - `http_request` - Make outbound HTTP requests
+- `memory_store` - Store a knowledge node
+- `memory_get` - Retrieve a node with its relationships
+- `memory_search` - Full-text search across knowledge graph
+- `memory_update` - Update node content or metadata
+- `memory_delete` - Delete a node (HITL-gated)
+- `memory_link` - Create a typed edge between nodes
+- `memory_children` - Get child nodes via parent_of edges
+- `memory_ancestors` - Traverse upward via parent_of edges
+- `memory_roots` - Get all root nodes
+- `memory_related` - Get all connected nodes
+- `memory_subtree` - Get full descendant subtree
+- `memory_stats` - Knowledge graph metrics
 
 ### OpenAPI Endpoints
 
@@ -613,6 +705,18 @@ When using REST API directly:
 - `POST /api/tools/workspace/info` - Workspace information
 - `POST /api/tools/workspace/secrets_list` - List secret key names
 - `POST /api/tools/http/request` - Make outbound HTTP requests
+- `POST /api/tools/memory/store` - Store a knowledge node
+- `POST /api/tools/memory/get` - Retrieve a node with relations
+- `POST /api/tools/memory/search` - Full-text search knowledge graph
+- `POST /api/tools/memory/update` - Update node content or metadata
+- `POST /api/tools/memory/delete` - Delete a node (HITL-gated)
+- `POST /api/tools/memory/link` - Create a typed edge between nodes
+- `POST /api/tools/memory/children` - Get child nodes via parent_of edges
+- `POST /api/tools/memory/ancestors` - Traverse upward via parent_of edges
+- `POST /api/tools/memory/roots` - Get all root nodes
+- `POST /api/tools/memory/related` - Get all connected nodes
+- `POST /api/tools/memory/subtree` - Get full descendant subtree
+- `POST /api/tools/memory/stats` - Knowledge graph metrics
 
 ### Admin API Endpoints
 
@@ -623,7 +727,6 @@ When using REST API directly:
 
 The following tools are planned for future releases:
 
-- **Memory Tools** - Knowledge graph storage for persistent information
 - **Plan Tools** - DAG-based multi-step task execution
 
 This document will be updated as new tools are added to the server.

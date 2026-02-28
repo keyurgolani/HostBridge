@@ -51,7 +51,6 @@ Built-in admin dashboard provides human oversight, HITL (Human-in-the-Loop) appr
 
 ### 🚧 Coming Soon
 
-- Knowledge graph memory system
 - DAG-based plan execution
 
 ---
@@ -369,9 +368,23 @@ http://localhost:8080/admin/
   - Configurable timeout (default 30s, max 120s)
   - Response truncation and content-type handling
 
+### Memory Tools
+
+- `memory_store` - Store a knowledge node with entity type, tags, and metadata; optionally link to existing nodes
+- `memory_get` - Retrieve a node by ID with its immediate relationships (incoming and outgoing)
+- `memory_search` - Full-text search (FTS5 BM25 ranking) with optional tag filter and entity type filter
+- `memory_update` - Update node content, name, tags, or metadata (metadata is patch-merged)
+- `memory_delete` - Delete a node and all its edges (HITL-gated; cascade option for orphaned children)
+- `memory_link` - Create or update a typed, directed edge between nodes; supports bidirectional and temporal edges
+- `memory_children` - Get immediate children connected via `parent_of` edges
+- `memory_ancestors` - Traverse upward via `parent_of` edges (recursive CTE, configurable depth)
+- `memory_roots` - Get all root nodes (nodes with no incoming `parent_of` edges)
+- `memory_related` - Get all nodes connected by any edge type, with optional relation filter
+- `memory_subtree` - Get full descendant subtree via `parent_of` edges (recursive CTE, configurable depth)
+- `memory_stats` - Graph metrics: node/edge counts, type breakdown, tag frequency, most connected nodes
+
 ### Coming Soon
 
-- `memory_*` - Knowledge graph storage and retrieval
 - `plan_*` - DAG-based multi-step execution
 
 ---
@@ -537,8 +550,17 @@ npm run dev
 - Configurable timeout, response truncation, follow-redirects
 - Comprehensive test coverage (22 secrets tests, 32 HTTP tests)
 
+### ✅ Knowledge Graph Memory (Complete)
+
+- 12 tools: `memory_store`, `memory_get`, `memory_search`, `memory_update`, `memory_delete`, `memory_link`, `memory_children`, `memory_ancestors`, `memory_roots`, `memory_related`, `memory_subtree`, `memory_stats`
+- SQLite FTS5 full-text search with BM25 relevance ranking
+- Graph traversal via recursive CTEs (ancestors, subtree) with configurable depth limits
+- Typed, directed edges with temporal support (`valid_from`/`valid_until`)
+- `parent_of` edge convention for hierarchical knowledge trees
+- `memory_delete` is HITL-gated to prevent accidental knowledge loss
+- 46 tests passing
+
 ### 📋 Upcoming Features
-- Memory system (knowledge graph)
 - Plan execution (DAG-based workflows)
 - Dashboard enhancements
 
@@ -607,7 +629,7 @@ Built following the design principles from:
 
 The project includes comprehensive test coverage:
 
-- **229 tests** covering all functionality
+- **275 tests** covering all functionality
 - **Unit tests** for individual components
 - **Integration tests** for API endpoints
 - **MCP protocol tests** for Streamable HTTP transport
