@@ -636,6 +636,22 @@ As of this version, HostBridge supports:
     - Configurable timeout (up to server's max_timeout)
     - Response truncation at configured `max_response_size_kb`
 
+- **Plan Tools** (category: `plan`)
+  - `plan_create` - Create a plan with DAG validation
+    - Validates task dependencies, detects cycles via Kahn's algorithm
+    - Returns plan_id, execution order, task count
+  - `plan_execute` - Execute a plan synchronously
+    - Topological sort ensures correct dependency order
+    - Concurrent execution via asyncio.gather for same-level tasks
+    - Task reference resolution: `{{task:TASK_ID.field}}`
+    - Failure policies: stop, skip_dependents, continue
+    - HITL integration for tasks with require_hitl=True
+  - `plan_status` - Get plan and per-task status
+    - Task states: pending, running, completed, failed, skipped
+    - Includes outputs, errors, timestamps
+  - `plan_list` - List all plans with summary info
+  - `plan_cancel` - Cancel a pending or running plan
+
 ### MCP-Specific Tool Names
 
 When using MCP clients (Claude Desktop, Cursor, etc.), tools are identified by their operation IDs:
@@ -676,6 +692,16 @@ When using MCP clients (Claude Desktop, Cursor, etc.), tools are identified by t
 - `memory_related` - Get all connected nodes
 - `memory_subtree` - Get full descendant subtree
 - `memory_stats` - Knowledge graph metrics
+- `plan_create` - Create a DAG-based execution plan
+- `plan_execute` - Execute a plan synchronously
+- `plan_status` - Get plan and task status
+- `plan_list` - List all plans
+- `plan_cancel` - Cancel a plan
+- `plan_create` - Create a DAG-based execution plan
+- `plan_execute` - Execute a plan synchronously
+- `plan_status` - Get plan and task status
+- `plan_list` - List all plans
+- `plan_cancel` - Cancel a plan
 
 ### OpenAPI Endpoints
 
@@ -717,6 +743,11 @@ When using REST API directly:
 - `POST /api/tools/memory/related` - Get all connected nodes
 - `POST /api/tools/memory/subtree` - Get full descendant subtree
 - `POST /api/tools/memory/stats` - Knowledge graph metrics
+- `POST /api/tools/plan/create` - Create a DAG-based execution plan
+- `POST /api/tools/plan/execute` - Execute a plan synchronously
+- `POST /api/tools/plan/status` - Get plan and task status
+- `POST /api/tools/plan/list` - List all plans
+- `POST /api/tools/plan/cancel` - Cancel a plan
 
 ### Admin API Endpoints
 
@@ -727,9 +758,107 @@ When using REST API directly:
 
 The following tools are planned for future releases:
 
-- **Plan Tools** - DAG-based multi-step task execution
+- Admin dashboard enhancements
 
 This document will be updated as new tools are added to the server.
+
+## Plan Tools (DAG Execution)
+
+### Creating Plans
+
+**"Create a plan to write a file and then read it back"**
+- Creates a DAG with two tasks where read depends on write
+- Returns plan_id, execution order, and validation status
+
+**"Set up a parallel execution plan: write two files, then merge their contents"**
+- Tasks without dependencies run concurrently
+- Merge task waits for both write tasks to complete
+
+**"Create a plan with cycle detection: task A depends on B, B depends on A"**
+- This will fail with validation error - cycles are detected at creation time
+
+### Executing Plans
+
+**"Execute the plan I just created"**
+- Runs all tasks in topological order
+- Tasks at same level execute concurrently
+- Returns final status, completed/failed/skipped counts, duration
+
+**"Run the plan with a 5-minute timeout"**
+- Executes plan with custom timeout (default 1 hour)
+
+### Plan Status and Management
+
+**"Show me the status of plan abc123"**
+- Returns plan status (pending/running/completed/failed/cancelled)
+- Per-task progress with outputs and errors
+- Task counts: total, completed, failed, skipped, running
+
+**"List all plans"**
+- Shows all plans with names, status, task counts, timestamps
+
+**"Cancel the running plan"**
+- Marks all pending/running tasks as skipped
+- Sets plan status to cancelled
+
+### Task References
+
+**"Use the output from task A as input to task B"**
+- Reference syntax: `{{task:task_a_id.output_field}}`
+- Resolved before task B executes
+- Preserves types (dict, list, int, etc.) for full references
+
+### Failure Handling
+
+**"Create a plan that stops all tasks if any task fails"**
+- Use `on_failure: "stop"` (default policy)
+
+**"Create a plan that skips only dependent tasks on failure"**
+- Use `on_failure: "skip_dependents"` - independent tasks continue
+
+**"Create a plan that continues all tasks regardless of failures"**
+- Use `on_failure: "continue"` - all tasks run
+
+### HITL in Plans
+
+**"Create a plan where the git_push task requires approval"**
+- Set `require_hitl: true` on the task
+- Plan pauses at that task until approved
+- Other tasks in same level run concurrently
+
+### Curl Examples
+
+```bash
+# Create a sequential plan
+curl -X POST http://localhost:8080/api/tools/plan/create \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "write-then-read",
+    "tasks": [
+      {"id": "write", "name": "Write file", "tool_category": "fs", "tool_name": "write", "params": {"path": "test.txt", "content": "Hello"}},
+      {"id": "read", "name": "Read file", "tool_category": "fs", "tool_name": "read", "params": {"path": "test.txt"}, "depends_on": ["write"]}
+    ]
+  }'
+
+# Execute a plan
+curl -X POST http://localhost:8080/api/tools/plan/execute \
+  -H "Content-Type: application/json" \
+  -d '{"plan_id": "<plan-id>"}'
+
+# Check plan status
+curl -X POST http://localhost:8080/api/tools/plan/status \
+  -H "Content-Type: application/json" \
+  -d '{"plan_id": "<plan-id>"}'
+
+# List all plans
+curl -X POST http://localhost:8080/api/tools/plan/list \
+  -H "Content-Type: application/json" -d '{}'
+
+# Cancel a plan
+curl -X POST http://localhost:8080/api/tools/plan/cancel \
+  -H "Content-Type: application/json" \
+  -d '{"plan_id": "<plan-id>"}'
+```
 
 ---
 

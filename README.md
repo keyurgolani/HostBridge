@@ -47,11 +47,13 @@ Built-in admin dashboard provides human oversight, HITL (Human-in-the-Loop) appr
 - **Policy Engine:** Allow/block/HITL rules per tool
 - **Secret Management:** Secure secret resolution with `{{secret:KEY}}` template syntax
 - **HTTP Client:** Make outbound HTTP requests with SSRF protection, domain filtering, and secret injection
+- **Knowledge Graph Memory:** 12 tools for persistent knowledge storage with FTS5 search and graph traversal
+- **Plan Execution:** DAG-based multi-step workflows with concurrent execution, task references, and failure handling
 - **WebSocket Support:** Real-time notifications
 
 ### 🚧 Coming Soon
 
-- DAG-based plan execution
+- Admin dashboard enhancements
 
 ---
 
@@ -383,9 +385,25 @@ http://localhost:8080/admin/
 - `memory_subtree` - Get full descendant subtree via `parent_of` edges (recursive CTE, configurable depth)
 - `memory_stats` - Graph metrics: node/edge counts, type breakdown, tag frequency, most connected nodes
 
-### Coming Soon
+### Plan Tools
 
-- `plan_*` - DAG-based multi-step execution
+- `plan_create` - Create a new plan with DAG validation
+  - Validates task dependencies for cycles using Kahn's algorithm
+  - Computes execution levels for concurrent task scheduling
+  - Returns plan ID, execution order, and task count
+- `plan_execute` - Execute a plan synchronously until completion
+  - Topological sort ensures correct dependency order
+  - Concurrent execution via `asyncio.gather` for tasks at same level
+  - Task reference resolution: `{{task:TASK_ID.field}}` in params
+  - Three failure policies: `stop`, `skip_dependents`, `continue`
+  - Per-task `on_failure` override for fine-grained control
+  - HITL integration: tasks with `require_hitl=True` block for approval
+- `plan_status` - Get plan and per-task status
+  - Task states: pending, running, completed, failed, skipped
+  - Includes task outputs, errors, and timestamps
+  - Counts: total, completed, failed, skipped, running
+- `plan_list` - List all plans with summary info
+- `plan_cancel` - Cancel a pending or running plan
 
 ---
 
@@ -560,8 +578,31 @@ npm run dev
 - `memory_delete` is HITL-gated to prevent accidental knowledge loss
 - 46 tests passing
 
+### ✅ Plan Execution (Complete)
+
+- 5 tools: `plan_create`, `plan_execute`, `plan_status`, `plan_list`, `plan_cancel`
+- DAG validation with Kahn's algorithm for cycle detection
+- Concurrent level execution via `asyncio.gather`
+- Task reference resolution: `{{task:TASK_ID.field}}`
+- Three failure policies: `stop`, `skip_dependents`, `continue`
+- Per-task `on_failure` override
+- HITL integration for individual tasks
+- SQLite persistence for plan/task state
+- 53 tests passing
+
+### ✅ Plan Execution (Complete)
+
+- 5 tools: `plan_create`, `plan_execute`, `plan_status`, `plan_list`, `plan_cancel`
+- DAG validation with cycle detection via Kahn's algorithm
+- Concurrent execution via `asyncio.gather` for tasks at same dependency level
+- Task reference resolution: `{{task:TASK_ID.field}}` in parameters
+- Three failure policies: `stop`, `skip_dependents`, `continue`
+- Per-task `on_failure` override for fine-grained control
+- HITL integration: tasks with `require_hitl=True` block for human approval
+- Plan state persistence in SQLite across container restarts
+- 53 tests passing
+
 ### 📋 Upcoming Features
-- Plan execution (DAG-based workflows)
 - Dashboard enhancements
 
 ---
@@ -629,7 +670,7 @@ Built following the design principles from:
 
 The project includes comprehensive test coverage:
 
-- **275 tests** covering all functionality
+- **331 tests** covering all functionality
 - **Unit tests** for individual components
 - **Integration tests** for API endpoints
 - **MCP protocol tests** for Streamable HTTP transport
@@ -639,5 +680,7 @@ The project includes comprehensive test coverage:
 - **Docker tools tests** (20 unit tests, 7 integration tests)
 - **Secrets tests** (22 tests: loading, template resolution, masking)
 - **HTTP tools tests** (32 tests: SSRF detection, domain filtering, API integration)
+- **Memory tools tests** (46 tests: CRUD, FTS5 search, graph traversal)
+- **Plan tools tests** (53 tests: DAG validation, execution, failure handling, HITL)
 
 All tests pass with zero warnings and clean exit.
