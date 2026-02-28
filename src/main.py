@@ -317,7 +317,7 @@ async def plan_validation_error_handler(request: Request, exc: PlanValidationErr
     """Handle plan DAG validation errors."""
     logger.warning("plan_validation_error", error=str(exc), path=request.url.path)
     return JSONResponse(
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
         content=ErrorResponse(
             error_type="plan_validation_error",
             message=str(exc),

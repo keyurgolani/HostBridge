@@ -85,64 +85,63 @@ def mock_container():
 
 class TestDockerList:
     """Tests for docker_list tool."""
-    
+
     @pytest.mark.asyncio
     async def test_list_all_containers(self, docker_tools, mock_docker):
         """Test listing all containers."""
-        # Mock container data
-        mock_docker.containers.list = AsyncMock(return_value=[
-            {
-                "Id": "abc123" * 10,
-                "Names": ["/container1"],
-                "Image": "nginx:latest",
-                "State": "running",
-                "Status": "Up 2 hours",
-                "Ports": [
-                    {"PrivatePort": 80, "PublicPort": 8080, "IP": "0.0.0.0", "Type": "tcp"}
-                ],
-                "Created": 1704067200,  # 2024-01-01 00:00:00
-            },
-            {
-                "Id": "def456" * 10,
-                "Names": ["/container2"],
-                "Image": "postgres:14",
-                "State": "exited",
-                "Status": "Exited (0) 1 hour ago",
-                "Ports": [],
-                "Created": 1704070800,  # 2024-01-01 01:00:00
-            },
-        ])
-        
+        # Create mock container objects with .show() method
+        mock_container1 = MagicMock()
+        mock_container1.show = AsyncMock(return_value={
+            "Id": "abc123" * 10,
+            "Name": "/container1",
+            "Config": {"Image": "nginx:latest"},
+            "State": {"Status": "running"},
+            "NetworkSettings": {"IPAddress": "172.17.0.2", "Ports": {}},
+            "Created": "2024-01-01T00:00:00Z",
+        })
+
+        mock_container2 = MagicMock()
+        mock_container2.show = AsyncMock(return_value={
+            "Id": "def456" * 10,
+            "Name": "/container2",
+            "Config": {"Image": "postgres:14"},
+            "State": {"Status": "exited"},
+            "NetworkSettings": {"IPAddress": "", "Ports": {}},
+            "Created": "2024-01-01T01:00:00Z",
+        })
+
+        mock_docker.containers.list = AsyncMock(return_value=[mock_container1, mock_container2])
+
         with patch.object(docker_tools, '_get_docker', return_value=mock_docker):
             request = DockerListRequest(all=True)
             response = await docker_tools.list_containers(request)
-        
+
         assert response.total_count == 2
         assert len(response.containers) == 2
         assert response.containers[0]["name"] == "container1"
-        assert response.containers[0]["status"] == "Up 2 hours"
+        assert response.containers[0]["state"] == "running"
         assert response.containers[1]["name"] == "container2"
         assert response.containers[1]["state"] == "exited"
-    
+
     @pytest.mark.asyncio
     async def test_list_running_only(self, docker_tools, mock_docker):
         """Test listing only running containers."""
-        mock_docker.containers.list = AsyncMock(return_value=[
-            {
-                "Id": "abc123" * 10,
-                "Names": ["/container1"],
-                "Image": "nginx:latest",
-                "State": "running",
-                "Status": "Up 2 hours",
-                "Ports": [],
-                "Created": 1704067200,
-            },
-        ])
-        
+        mock_container1 = MagicMock()
+        mock_container1.show = AsyncMock(return_value={
+            "Id": "abc123" * 10,
+            "Name": "/container1",
+            "Config": {"Image": "nginx:latest"},
+            "State": {"Status": "running"},
+            "NetworkSettings": {"IPAddress": "172.17.0.2", "Ports": {}},
+            "Created": "2024-01-01T00:00:00Z",
+        })
+
+        mock_docker.containers.list = AsyncMock(return_value=[mock_container1])
+
         with patch.object(docker_tools, '_get_docker', return_value=mock_docker):
             request = DockerListRequest(all=False)
             response = await docker_tools.list_containers(request)
-        
+
         assert response.total_count == 1
         assert response.containers[0]["state"] == "running"
     
@@ -231,22 +230,21 @@ class TestDockerLogs:
     async def test_get_logs(self, docker_tools, mock_docker, mock_container):
         """Test getting container logs."""
         mock_docker.containers.get = AsyncMock(return_value=mock_container)
-        
+
         with patch.object(docker_tools, '_get_docker', return_value=mock_docker):
             request = DockerLogsRequest(container="test-container", tail=100)
             response = await docker_tools.get_logs(request)
-        
+
         assert response.container == "test-container"
         assert "Log line 1" in response.logs
         assert "Log line 2" in response.logs
         assert response.line_count == 2
-        
-        # Verify log parameters
+
+        # Verify log parameters (since is only included if provided)
         mock_container.log.assert_called_once_with(
             stdout=True,
             stderr=True,
             tail=100,
-            since=None,
             follow=False,
         )
     
