@@ -1,0 +1,31 @@
+version: "3.8"
+
+services:
+  hostbridge:
+    build: .
+    container_name: hostbridge
+    restart: unless-stopped
+    ports:
+      - "${HOSTBRIDGE_PORT:-8080}:8080"
+    environment:
+      - WORKSPACE_BASE_DIR=${WORKSPACE_BASE_DIR:-/workspace}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin}
+      - SECRETS_FILE=/secrets/secrets.env
+      - AUDIT_RETENTION_DAYS=${AUDIT_RETENTION_DAYS:-30}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - HITL_TTL_SECONDS=${HITL_TTL_SECONDS:-300}
+    volumes:
+      # Workspace mount — user configures this
+      - ${HOST_WORKSPACE_DIR}:/workspace
+      
+      # Secrets file (optional)
+      - ${SECRETS_FILE_PATH:-./secrets.env}:/secrets/secrets.env:ro
+      
+      # Persistent data (audit logs, memory DB, etc.)
+      - hostbridge-data:/data
+      
+      # Configuration file
+      - ${CONFIG_FILE:-./config.yaml}:/app/config.yaml:ro
+
+volumes:
+  hostbridge-data:

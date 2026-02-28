@@ -1,0 +1,56 @@
+# HostBridge Configuration
+server:
+  host: "0.0.0.0"
+  port: 8080
+  cors_origins:
+    - "*"
+
+workspace:
+  base_dir: "/workspace"
+  
+secrets:
+  file: "/secrets/secrets.env"
+  
+auth:
+  admin_password: "admin"
+  session_timeout_hours: 24
+
+hitl:
+  default_ttl_seconds: 300
+  notification_sound: true
+  auto_reject_on_expiry: true
+
+audit:
+  retention_days: 30
+  log_level: "INFO"
+
+# Tool Policies
+tools:
+  defaults:
+    workspace_override: "hitl"
+    
+  fs:
+    read:
+      policy: "allow"
+      workspace_override: "allow"
+    write:
+      policy: "allow"
+      hitl_patterns:
+        - "*.conf"
+        - "*.env"
+        - "*.yaml"
+        - "*.yml"
+      block_patterns:
+        - "*.exe"
+        - "*.bin"
+      workspace_override: "hitl"
+    search:
+      policy: "allow"
+    list:
+      policy: "allow"
+      
+  workspace:
+    info:
+      policy: "allow"
+    secrets_list:
+      policy: "allow"
