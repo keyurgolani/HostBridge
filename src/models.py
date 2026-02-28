@@ -327,6 +327,72 @@ class GitRemoteResponse(BaseModel):
     output: Optional[str] = Field(None, description="Git command output")
 
 
+# Docker tool models
+
+class DockerListRequest(BaseModel):
+    """Request model for docker_list tool."""
+    all: bool = Field(True, description="Include stopped containers")
+    filter_name: Optional[str] = Field(None, description="Filter by container name (partial match)")
+    filter_status: Optional[str] = Field(None, description="Filter by status (running, exited, paused, etc.)")
+
+
+class DockerListResponse(BaseModel):
+    """Response model for docker_list tool."""
+    containers: list[dict] = Field(..., description="List of containers with id, name, image, status, ports, created")
+    total_count: int = Field(..., description="Total number of containers found")
+
+
+class DockerInspectRequest(BaseModel):
+    """Request model for docker_inspect tool."""
+    container: str = Field(..., description="Container name or ID")
+
+
+class DockerInspectResponse(BaseModel):
+    """Response model for docker_inspect tool."""
+    id: str = Field(..., description="Container ID")
+    name: str = Field(..., description="Container name")
+    image: str = Field(..., description="Image name")
+    status: str = Field(..., description="Container status")
+    config: dict = Field(..., description="Container configuration")
+    network: dict = Field(..., description="Network settings")
+    mounts: list = Field(..., description="Volume mounts")
+    ports: dict = Field(..., description="Port mappings")
+    created: str = Field(..., description="Creation timestamp")
+    state: dict = Field(..., description="Container state details")
+
+
+class DockerLogsRequest(BaseModel):
+    """Request model for docker_logs tool."""
+    container: str = Field(..., description="Container name or ID")
+    tail: int = Field(100, description="Number of lines from the end of logs")
+    since: Optional[str] = Field(None, description="Show logs since timestamp (e.g., '2024-01-01T00:00:00')")
+    follow: bool = Field(False, description="Follow log output (not recommended for API calls)")
+
+
+class DockerLogsResponse(BaseModel):
+    """Response model for docker_logs tool."""
+    logs: str = Field(..., description="Container logs")
+    container: str = Field(..., description="Container name or ID")
+    line_count: int = Field(..., description="Number of log lines returned")
+
+
+class DockerActionRequest(BaseModel):
+    """Request model for docker_action tool."""
+    container: str = Field(..., description="Container name or ID")
+    action: str = Field(..., description="Action to perform: start, stop, restart, pause, unpause")
+    timeout: int = Field(30, description="Timeout in seconds for the action")
+
+
+class DockerActionResponse(BaseModel):
+    """Response model for docker_action tool."""
+    container: str = Field(..., description="Container name or ID")
+    action: str = Field(..., description="Action performed")
+    success: bool = Field(..., description="Whether the action succeeded")
+    previous_status: str = Field(..., description="Status before action")
+    new_status: str = Field(..., description="Status after action")
+    message: str = Field(..., description="Result message")
+
+
 # Error response model
 
 class ErrorResponse(BaseModel):
@@ -336,3 +402,4 @@ class ErrorResponse(BaseModel):
     message: str = Field(..., description="Human-readable error message")
     suggestion: Optional[str] = Field(None, description="Suggestion for recovery")
     suggestion_tool: Optional[str] = Field(None, description="Suggested tool to use instead")
+

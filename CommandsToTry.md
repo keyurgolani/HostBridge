@@ -271,6 +271,84 @@ Before trying file operations, it's helpful to understand the workspace configur
 **"Checkout the feature branch"** (requires approval)
 - Switches to a different branch
 
+## Docker Tools
+
+### Listing Containers
+
+**"Show me all Docker containers"**
+- Lists all containers (running and stopped) with details
+
+**"List only running Docker containers"**
+- Shows containers that are currently running
+
+**"Find containers with 'nginx' in the name"**
+- Filters containers by name (partial match)
+
+**"Show me all exited containers"**
+- Filters containers by status (exited, paused, etc.)
+
+**"What Docker containers are on this system?"**
+- Returns container ID, name, image, status, ports, and creation time
+
+### Inspecting Containers
+
+**"Inspect the hostbridge container"**
+- Gets detailed information about a specific container
+
+**"Show me the configuration of the nginx container"**
+- Returns environment variables, command, entrypoint, labels
+
+**"What network settings does the database container have?"**
+- Shows IP address, ports, networks
+
+**"Show me the volume mounts for the app container"**
+- Lists all volume and bind mounts
+
+**"What's the current state of the redis container?"**
+- Returns running status, PID, exit code, timestamps
+
+### Viewing Container Logs
+
+**"Show me the logs from the hostbridge container"**
+- Retrieves last 100 lines of container logs (default)
+
+**"Get the last 50 lines of logs from nginx"**
+- Retrieves specific number of log lines
+
+**"Show me logs from the app container since 2024-01-01"**
+- Filters logs by timestamp
+
+**"What errors are in the database container logs?"**
+- LLM can analyze logs for errors after retrieval
+
+### Container Control (Requires HITL Approval)
+
+**"Restart the nginx container"** (requires approval)
+- Stops and starts the container
+
+**"Start the stopped database container"** (requires approval)
+- Starts a container that's not running
+
+**"Stop the app container"** (requires approval)
+- Gracefully stops a running container
+
+**"Pause the redis container"** (requires approval)
+- Freezes container processes
+
+**"Unpause the redis container"** (requires approval)
+- Resumes a paused container
+
+### Multi-Step Docker Workflows
+
+**"List all containers, then show me the logs from any that are failing"**
+- Combines listing and log retrieval
+
+**"Inspect the nginx container and tell me if it's configured correctly"**
+- LLM analyzes container configuration
+
+**"Check if the database container is running, and if not, start it"** (requires approval)
+- Conditional container management
+
 ## Understanding Tool Behavior
 
 ### Security and Boundaries
@@ -394,6 +472,21 @@ As of this version, HostBridge supports:
   - `git_branch` - Create or delete branches (HITL for delete)
   - `git_stash` - Stash operations (push, pop, list, drop)
 
+- **Docker Tools** (category: `docker`)
+  - `docker_list` - List Docker containers with filtering
+    - Filter by name (partial match) or status (running, exited, paused, etc.)
+    - Include/exclude stopped containers
+  - `docker_inspect` - Get detailed container information
+    - Configuration (environment variables, command, entrypoint, labels)
+    - Network settings (IP address, ports, networks)
+    - Volume mounts and bind mounts
+    - Container state (running, paused, exit code, PID, timestamps)
+  - `docker_logs` - Retrieve container logs
+    - Configurable tail (number of lines from end)
+    - Time-based filtering (since timestamp)
+  - `docker_action` - Control container lifecycle (HITL required)
+    - Start, stop, restart, pause, unpause containers
+
 - **Workspace Tools** (category: `workspace`)
   - `workspace_info` - Get workspace configuration and boundaries
 
@@ -418,6 +511,10 @@ When using MCP clients (Claude Desktop, Cursor, etc.), tools are identified by t
 - `git_checkout` - Git checkout branch
 - `git_branch` - Git branch operations
 - `git_stash` - Git stash operations
+- `docker_list` - List Docker containers
+- `docker_inspect` - Inspect Docker container
+- `docker_logs` - Get Docker container logs
+- `docker_action` - Control Docker container lifecycle
 - `workspace_info` - Workspace information
 
 ### OpenAPI Endpoints
@@ -441,13 +538,16 @@ When using REST API directly:
 - `POST /api/tools/git/checkout` - Git checkout branch
 - `POST /api/tools/git/branch` - Git branch operations
 - `POST /api/tools/git/stash` - Git stash operations
+- `POST /api/tools/docker/list` - List Docker containers
+- `POST /api/tools/docker/inspect` - Inspect Docker container
+- `POST /api/tools/docker/logs` - Get Docker container logs
+- `POST /api/tools/docker/action` - Control Docker container lifecycle
 - `POST /api/tools/workspace/info` - Workspace information
 
 ## Future Tools (Coming Soon)
 
 The following tools are planned for future releases:
 
-- **Docker Tools** - Container management, image operations
 - **HTTP Tools** - Make HTTP requests with authentication and SSRF protection
 - **Memory Tools** - Knowledge graph storage for persistent information
 - **Plan Tools** - DAG-based multi-step task execution

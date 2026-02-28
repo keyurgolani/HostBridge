@@ -1,5 +1,6 @@
 """Main FastAPI application."""
 
+import os
 import time
 from contextlib import asynccontextmanager
 from typing import Any, Dict, Optional
@@ -21,6 +22,7 @@ from src.tools.fs_tools import FilesystemTools
 from src.tools.workspace_tools import WorkspaceTools
 from src.tools.shell_tools import ShellTools
 from src.tools.git_tools import GitTools
+from src.tools.docker_tools import DockerTools
 from src.models import (
     FsReadRequest,
     FsReadResponse,
@@ -57,6 +59,14 @@ from src.models import (
     GitShowResponse,
     GitRemoteRequest,
     GitRemoteResponse,
+    DockerListRequest,
+    DockerListResponse,
+    DockerInspectRequest,
+    DockerInspectResponse,
+    DockerLogsRequest,
+    DockerLogsResponse,
+    DockerActionRequest,
+    DockerActionResponse,
     ErrorResponse,
 )
 
@@ -66,7 +76,7 @@ setup_logging(config.audit.log_level)
 logger = get_logger(__name__)
 
 # Initialize components
-db = Database()
+db = Database(db_path=os.getenv("DB_PATH", "/data/hostbridge.db"))
 workspace_manager = WorkspaceManager(config.workspace.base_dir)
 audit_logger = AuditLogger(db)
 policy_engine = PolicyEngine(config)
@@ -77,6 +87,7 @@ fs_tools = FilesystemTools(workspace_manager)
 workspace_tools = WorkspaceTools(workspace_manager)
 shell_tools = ShellTools(workspace_manager)
 git_tools = GitTools(workspace_manager)
+docker_tools = DockerTools()
 
 
 @asynccontextmanager
@@ -94,6 +105,7 @@ async def lifespan(app: FastAPI):
     # Shutdown
     logger.info("shutting_down_hostbridge")
     await hitl_manager.stop()
+    await docker_tools.close()
     await db.close()
     logger.info("hostbridge_stopped")
 
@@ -122,6 +134,12 @@ workspace_app = FastAPI(
 git_app = FastAPI(
     title="HostBridge — Git Tools",
     description="Git repository management for HostBridge",
+    version="0.1.0",
+)
+
+docker_app = FastAPI(
+    title="HostBridge — Docker Tools",
+    description="Docker container management for HostBridge",
     version="0.1.0",
 )
 
@@ -1750,3 +1768,259 @@ app.mount("/tools/fs", fs_app)
 app.mount("/tools/workspace", workspace_app)
 app.mount("/tools/shell", shell_app)
 app.mount("/tools/git", git_app)
+app.mount("/tools/docker", docker_app)
+
+
+# ============================================================================
+# Docker Tools
+# ============================================================================
+
+@app.post(
+    "/api/tools/docker/list",
+    operation_id="docker_list",
+    summary="List Docker Containers",
+    description="""List Docker containers on the host system.
+
+This tool allows you to view all containers (running and stopped) managed by Docker.
+You can filter by container name or status.
+
+Use this tool when you need to:
+- See what containers are running
+- Check container status
+- Find a specific container by name
+- Monitor container health
+
+The tool returns container ID, name, image, status, ports, and creation time.
+
+Examples:
+- List all containers: {"all": true}
+- List only running containers: {"all": false}
+- Filter by name: {"filter_name": "nginx"}
+- Filter by status: {"filter_status": "running"}""",
+    tags=["docker"],
+    response_model=DockerListResponse,
+)
+async def docker_list_root(request: DockerListRequest) -> DockerListResponse:
+    """List Docker containers (root endpoint)."""
+    return await execute_tool(
+        tool_category="docker",
+        tool_name="list",
+        params=request.model_dump(),
+        tool_func=lambda: docker_tools.list_containers(request),
+        protocol="openapi",
+    )
+
+
+@docker_app.post(
+    "/list",
+    operation_id="docker_list_sub",
+    summary="List Docker Containers",
+    description="""List Docker containers on the host system.
+
+This tool allows you to view all containers (running and stopped) managed by Docker.
+You can filter by container name or status.
+
+Use this tool when you need to:
+- See what containers are running
+- Check container status
+- Find a specific container by name
+- Monitor container health
+
+The tool returns container ID, name, image, status, ports, and creation time.""",
+    response_model=DockerListResponse,
+)
+async def docker_list_sub(request: DockerListRequest) -> DockerListResponse:
+    """List Docker containers (sub-app endpoint)."""
+    return await execute_tool(
+        tool_category="docker",
+        tool_name="list",
+        params=request.model_dump(),
+        tool_func=lambda: docker_tools.list_containers(request),
+        protocol="openapi",
+    )
+
+
+@app.post(
+    "/api/tools/docker/inspect",
+    operation_id="docker_inspect",
+    summary="Inspect Docker Container",
+    description="""Get detailed information about a specific Docker container.
+
+This tool provides comprehensive details about a container including:
+- Configuration (environment variables, command, entrypoint, labels)
+- Network settings (IP address, ports, networks)
+- Volume mounts
+- Container state (running, paused, exit code, etc.)
+
+Use this tool when you need to:
+- Debug container configuration issues
+- Check environment variables
+- View port mappings
+- Inspect volume mounts
+- Get detailed container state
+
+Provide either the container name or ID.
+
+Example: {"container": "nginx"} or {"container": "a1b2c3d4"}""",
+    tags=["docker"],
+    response_model=DockerInspectResponse,
+)
+async def docker_inspect_root(request: DockerInspectRequest) -> DockerInspectResponse:
+    """Inspect Docker container (root endpoint)."""
+    return await execute_tool(
+        tool_category="docker",
+        tool_name="inspect",
+        params=request.model_dump(),
+        tool_func=lambda: docker_tools.inspect_container(request),
+        protocol="openapi",
+    )
+
+
+@docker_app.post(
+    "/inspect",
+    operation_id="docker_inspect_sub",
+    summary="Inspect Docker Container",
+    description="""Get detailed information about a specific Docker container.
+
+This tool provides comprehensive details about a container including configuration,
+network settings, volume mounts, and container state.""",
+    response_model=DockerInspectResponse,
+)
+async def docker_inspect_sub(request: DockerInspectRequest) -> DockerInspectResponse:
+    """Inspect Docker container (sub-app endpoint)."""
+    return await execute_tool(
+        tool_category="docker",
+        tool_name="inspect",
+        params=request.model_dump(),
+        tool_func=lambda: docker_tools.inspect_container(request),
+        protocol="openapi",
+    )
+
+
+@app.post(
+    "/api/tools/docker/logs",
+    operation_id="docker_logs",
+    summary="Get Docker Container Logs",
+    description="""Retrieve logs from a Docker container.
+
+This tool fetches stdout and stderr output from a container. You can control:
+- Number of lines to retrieve (tail)
+- Time range (since timestamp)
+
+Use this tool when you need to:
+- Debug application issues
+- Monitor container output
+- Check error messages
+- Investigate crashes
+
+The logs are returned as a single string with newlines preserved.
+
+Examples:
+- Get last 100 lines: {"container": "nginx", "tail": 100}
+- Get last 50 lines: {"container": "nginx", "tail": 50}
+- Get logs since timestamp: {"container": "nginx", "since": "2024-01-01T00:00:00"}
+
+Note: The 'follow' parameter is not recommended for API calls and defaults to false.""",
+    tags=["docker"],
+    response_model=DockerLogsResponse,
+)
+async def docker_logs_root(request: DockerLogsRequest) -> DockerLogsResponse:
+    """Get Docker container logs (root endpoint)."""
+    return await execute_tool(
+        tool_category="docker",
+        tool_name="logs",
+        params=request.model_dump(),
+        tool_func=lambda: docker_tools.get_logs(request),
+        protocol="openapi",
+    )
+
+
+@docker_app.post(
+    "/logs",
+    operation_id="docker_logs_sub",
+    summary="Get Docker Container Logs",
+    description="""Retrieve logs from a Docker container.
+
+This tool fetches stdout and stderr output from a container.""",
+    response_model=DockerLogsResponse,
+)
+async def docker_logs_sub(request: DockerLogsRequest) -> DockerLogsResponse:
+    """Get Docker container logs (sub-app endpoint)."""
+    return await execute_tool(
+        tool_category="docker",
+        tool_name="logs",
+        params=request.model_dump(),
+        tool_func=lambda: docker_tools.get_logs(request),
+        protocol="openapi",
+    )
+
+
+@app.post(
+    "/api/tools/docker/action",
+    operation_id="docker_action",
+    summary="Control Docker Container",
+    description="""Perform control actions on a Docker container.
+
+This tool allows you to manage container lifecycle. Available actions:
+- start: Start a stopped container
+- stop: Stop a running container (graceful shutdown)
+- restart: Restart a container (stop + start)
+- pause: Pause a running container (freeze processes)
+- unpause: Resume a paused container
+
+Use this tool when you need to:
+- Start/stop services
+- Restart containers after configuration changes
+- Pause containers to save resources
+- Recover from container issues
+
+IMPORTANT: This tool requires human approval (HITL) by default for safety.
+Container control actions can affect running services.
+
+The tool returns the previous and new status of the container.
+
+Examples:
+- Start container: {"container": "nginx", "action": "start"}
+- Stop container: {"container": "nginx", "action": "stop", "timeout": 30}
+- Restart container: {"container": "nginx", "action": "restart"}
+- Pause container: {"container": "nginx", "action": "pause"}""",
+    tags=["docker"],
+    response_model=DockerActionResponse,
+)
+async def docker_action_root(request: DockerActionRequest) -> DockerActionResponse:
+    """Control Docker container (root endpoint)."""
+    return await execute_tool(
+        tool_category="docker",
+        tool_name="action",
+        params=request.model_dump(),
+        tool_func=lambda: docker_tools.container_action(request),
+        protocol="openapi",
+        force_hitl=True,
+        hitl_reason=f"Container action '{request.action}' on '{request.container}' requires approval",
+    )
+
+
+@docker_app.post(
+    "/action",
+    operation_id="docker_action_sub",
+    summary="Control Docker Container",
+    description="""Perform control actions on a Docker container.
+
+Available actions: start, stop, restart, pause, unpause.
+
+IMPORTANT: This tool requires human approval (HITL) by default for safety.""",
+    response_model=DockerActionResponse,
+)
+async def docker_action_sub(request: DockerActionRequest) -> DockerActionResponse:
+    """Control Docker container (sub-app endpoint)."""
+    return await execute_tool(
+        tool_category="docker",
+        tool_name="action",
+        params=request.model_dump(),
+        tool_func=lambda: docker_tools.container_action(request),
+        protocol="openapi",
+        force_hitl=True,
+        hitl_reason=f"Container action '{request.action}' on '{request.container}' requires approval",
+    )
+
+

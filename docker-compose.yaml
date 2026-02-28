@@ -16,6 +16,9 @@ services:
       # Workspace mount — user configures this
       - ${HOST_WORKSPACE_DIR}:/workspace
       
+      # Docker socket for container management (optional, for Docker tools)
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      
       # Secrets file (optional)
       - ${SECRETS_FILE_PATH:-./secrets.env}:/secrets/secrets.env:ro
       

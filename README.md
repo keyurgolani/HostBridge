@@ -33,6 +33,13 @@ Built-in admin dashboard provides human oversight, HITL (Human-in-the-Loop) appr
   - Commit, push, pull, checkout, stash operations
   - HITL approval for write operations
   - Support for authentication via environment variables
+- **Docker Tools:** Container management and monitoring
+  - List containers with filtering (running, stopped, by name/status)
+  - Inspect container details (config, network, mounts, state)
+  - Retrieve container logs with tail and timestamp filtering
+  - Control container lifecycle (start, stop, restart, pause, unpause)
+  - HITL approval for destructive operations
+  - Docker socket integration with security controls
 - **Workspace Management:** Secure path resolution and boundary enforcement
 - **HITL System:** Real-time approval workflow for sensitive operations
 - **Admin Dashboard:** Premium UI with real-time updates
@@ -43,7 +50,6 @@ Built-in admin dashboard provides human oversight, HITL (Human-in-the-Loop) appr
 
 ### 🚧 Coming Soon
 
-- Docker container management
 - HTTP client with SSRF protection
 - Knowledge graph memory system
 - DAG-based plan execution
@@ -106,10 +112,30 @@ curl -X POST http://localhost:8080/api/tools/git/log \
   -H "Content-Type: application/json" \
   -d '{"repo_path": ".", "max_count": 10}'
 
+# List Docker containers
+curl -X POST http://localhost:8080/api/tools/docker/list \
+  -H "Content-Type: application/json" \
+  -d '{"all": true}'
+
+# Inspect a Docker container
+curl -X POST http://localhost:8080/api/tools/docker/inspect \
+  -H "Content-Type: application/json" \
+  -d '{"container": "hostbridge"}'
+
+# Get Docker container logs
+curl -X POST http://localhost:8080/api/tools/docker/logs \
+  -H "Content-Type: application/json" \
+  -d '{"container": "hostbridge", "tail": 50}'
+
 # Write a file (triggers HITL for .conf files)
 curl -X POST http://localhost:8080/api/tools/fs/write \
   -H "Content-Type: application/json" \
   -d '{"path": "test.conf", "content": "test=value"}'
+
+# Restart a Docker container (triggers HITL)
+curl -X POST http://localhost:8080/api/tools/docker/action \
+  -H "Content-Type: application/json" \
+  -d '{"container": "nginx", "action": "restart"}'
 ```
 
 ### 4. Approve in Dashboard
@@ -185,6 +211,7 @@ services:
       - ./workspace:/workspace
       - ./data:/data
       - ./secrets.env:/secrets/secrets.env:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro  # For Docker tools
 ```
 
 ---
@@ -263,13 +290,34 @@ http://localhost:8080/admin/
 - `git_branch` - Create or delete branches (HITL for delete)
 - `git_stash` - Stash operations (push, pop, list, drop)
 
+### Docker
+
+- `docker_list` - List Docker containers with filtering
+  - Filter by name (partial match) or status (running, exited, paused, etc.)
+  - Include/exclude stopped containers
+  - Returns container ID, name, image, status, ports, creation time
+- `docker_inspect` - Get detailed container information
+  - Configuration (environment variables, command, entrypoint, labels)
+  - Network settings (IP address, ports, networks)
+  - Volume mounts and bind mounts
+  - Container state (running, paused, exit code, PID, timestamps)
+- `docker_logs` - Retrieve container logs
+  - Configurable tail (number of lines from end)
+  - Time-based filtering (since timestamp)
+  - Returns stdout and stderr combined
+- `docker_action` - Control container lifecycle (HITL required)
+  - Start stopped containers
+  - Stop running containers (graceful shutdown)
+  - Restart containers
+  - Pause/unpause containers
+  - Returns previous and new status
+
 ### Workspace
 
 - `workspace_info` - Get workspace configuration and disk usage
 
 ### Coming Soon
 
-- `docker_*` - Docker management (list, inspect, logs, control)
 - `http_request` - HTTP client with SSRF protection
 - `memory_*` - Knowledge graph storage and retrieval
 - `plan_*` - DAG-based multi-step execution
@@ -410,8 +458,16 @@ npm run dev
 - Git authentication support via environment variables
 - Comprehensive test coverage (27 unit tests, 12 integration tests)
 
+### ✅ Docker Tools (Complete)
+- Container listing with filtering (name, status, all/running)
+- Container inspection (config, network, mounts, state)
+- Log retrieval with tail and timestamp filtering
+- Container lifecycle control (start, stop, restart, pause, unpause)
+- HITL approval for destructive operations
+- Docker socket integration with read-only mount
+- Comprehensive test coverage (20 unit tests, 7 integration tests)
+
 ### 📋 Upcoming Features
-- Docker tools (container management)
 - Secret management with template resolution
 - HTTP client with SSRF protection
 - Memory system (knowledge graph)
@@ -483,12 +539,13 @@ Built following the design principles from:
 
 The project includes comprehensive test coverage:
 
-- **166 tests** covering all functionality
+- **193 tests** covering all functionality
 - **Unit tests** for individual components
 - **Integration tests** for API endpoints
 - **MCP protocol tests** for Streamable HTTP transport
 - **HITL workflow tests** for approval system
 - **Security tests** for workspace boundaries
 - **Git tools tests** (27 unit tests, 12 integration tests)
+- **Docker tools tests** (20 unit tests, 7 integration tests)
 
 All tests pass with zero warnings and clean exit.

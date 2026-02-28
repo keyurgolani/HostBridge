@@ -54,3 +54,19 @@ tools:
       policy: "allow"
     secrets_list:
       policy: "allow"
+      
+  docker:
+    list:
+      policy: "allow"
+    inspect:
+      policy: "allow"
+    logs:
+      policy: "allow"
+    action:
+      policy: "hitl"  # Container control requires approval
+      allow_actions:
+        - "start"
+        - "stop"
+        - "restart"
+        - "pause"
+        - "unpause"
