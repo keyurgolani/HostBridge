@@ -51,9 +51,15 @@ Built-in admin dashboard provides human oversight, HITL (Human-in-the-Loop) appr
 - **Plan Execution:** DAG-based multi-step workflows with concurrent execution, task references, and failure handling
 - **WebSocket Support:** Real-time notifications
 
-### 🚧 Coming Soon
+### ✅ Admin Dashboard Enhancements (Complete)
 
-- Admin dashboard enhancements
+- **Tool Explorer:** Browse and inspect all available tools with their JSON schemas
+- **Configuration Viewer:** View current server configuration and HTTP settings
+- **Enhanced System Health:** Real-time CPU, memory, database, and workspace metrics
+- **Audit Log Export:** Export filtered logs as JSON or CSV
+- **Browser Notifications:** Desktop alerts for HITL approval requests
+- **Container Log Viewer:** View logs from Docker containers in admin UI
+- **Mobile Responsive:** Full responsive design for all device sizes
 
 ---
 
@@ -267,10 +273,11 @@ services:
   - Expandable/collapsible sections for flexible monitoring
   - Real-time updates via WebSocket
   - Quick actions directly from dashboard widgets
-- **HITL Approval Queue Widget:** 
+- **HITL Approval Queue Widget:**
   - Approve/reject tool executions without navigation
   - Countdown timers and progress bars
   - Real-time notifications with visual alerts
+  - Browser notifications for desktop alerts
 - **System Health Widget:**
   - Overall health status with color-coded indicators
   - Key metrics: uptime, pending HITL, tools executed, error rate
@@ -279,16 +286,38 @@ services:
   - Last 5 tool executions with status badges
   - Quick stats: success, errors, blocked counts
   - Link to full audit log with filtering
+- **Tool Explorer Page:**
+  - Browse all available tools by category
+  - View JSON schemas for each tool
+  - See HITL requirements and descriptions
+- **Configuration Page:**
+  - View current server configuration
+  - HTTP settings and policy rules
+  - Workspace and database paths
+- **Enhanced System Health Page:**
+  - Real-time CPU and memory usage with progress bars
+  - Database and workspace disk sizes
+  - WebSocket connection count
+  - System info: platform, Python version, framework
+  - Tool category status overview
+- **Audit Log Enhancements:**
+  - Export logs as JSON or CSV
+  - Filter by status and tool category
+  - Pagination for large datasets
+- **Container Management:**
+  - List Docker containers with status
+  - View container logs from admin UI
 - **Dedicated Pages:**
   - Full HITL Queue management with detailed request information
   - Complete Audit Log with search, filter, and export
   - Detailed System Health with performance metrics
   - Secrets Management: list loaded key names, trigger hot reload
-- **Premium UI:** 
+- **Premium UI:**
   - Glassmorphism design with 3D animations
   - Aurora backgrounds and floating particles
   - Fully responsive (mobile, tablet, desktop)
   - Real-time WebSocket updates
+  - Touch-friendly interactions
 
 ### Access
 
@@ -603,7 +632,7 @@ npm run dev
 - 53 tests passing
 
 ### 📋 Upcoming Features
-- Dashboard enhancements
+- Additional tool categories as needed
 
 ---
 
@@ -670,7 +699,7 @@ Built following the design principles from:
 
 The project includes comprehensive test coverage:
 
-- **331 tests** covering all functionality
+- **366 tests** covering all functionality
 - **Unit tests** for individual components
 - **Integration tests** for API endpoints
 - **MCP protocol tests** for Streamable HTTP transport
@@ -682,5 +711,6 @@ The project includes comprehensive test coverage:
 - **HTTP tools tests** (32 tests: SSRF detection, domain filtering, API integration)
 - **Memory tools tests** (46 tests: CRUD, FTS5 search, graph traversal)
 - **Plan tools tests** (53 tests: DAG validation, execution, failure handling, HITL)
+- **Admin dashboard tests** (35 tests: health, tools, config, audit, auth)
 
 All tests pass with zero warnings and clean exit.

@@ -1,78 +1,158 @@
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
-import { FileText, Search } from 'lucide-react'
+import { FileText, Search, Download, X, ChevronLeft, ChevronRight } from 'lucide-react'
 import { api } from '@/lib/api'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
+import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { formatTimestamp, formatDuration, getStatusBadgeClass } from '@/lib/utils'
-import { useState } from 'react'
 
 export default function AuditLogPage() {
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('all')
+  const [categoryFilter, setCategoryFilter] = useState<string>('all')
+  const [page, setPage] = useState(0)
+  const [pageSize] = useState(50)
+  const [showExport, setShowExport] = useState(false)
+  const [exportFormat, setExportFormat] = useState<'json' | 'csv'>('json')
+  const [isExporting, setIsExporting] = useState(false)
 
-  const { data: logs = [], isLoading } = useQuery({
-    queryKey: ['audit-logs'],
-    queryFn: () => api.getAuditLogs(100),
+  const { data: logsData, isLoading } = useQuery({
+    queryKey: ['audit-logs-filtered', searchTerm, statusFilter, categoryFilter, page],
+    queryFn: () => api.getFilteredAuditLogs({
+      limit: pageSize,
+      offset: page * pageSize,
+      status: statusFilter !== 'all' ? statusFilter : undefined,
+      tool_category: categoryFilter !== 'all' ? categoryFilter : undefined,
+      search: searchTerm || undefined,
+    }),
     refetchInterval: 5000,
   })
 
-  const filteredLogs = logs.filter((log) => {
-    const matchesSearch =
-      searchTerm === '' ||
-      log.tool_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      log.tool_category.toLowerCase().includes(searchTerm.toLowerCase())
+  const logs = logsData?.logs || []
+  const total = logsData?.total || 0
+  const filtered = logsData?.filtered || 0
+  const totalPages = Math.ceil(total / pageSize)
 
-    const matchesStatus = statusFilter === 'all' || log.status === statusFilter
+  const handleExport = async () => {
+    setIsExporting(true)
+    try {
+      const blob = await api.exportAuditLogs(exportFormat, {
+        status: statusFilter !== 'all' ? statusFilter : undefined,
+        tool_category: categoryFilter !== 'all' ? categoryFilter : undefined,
+      })
 
-    return matchesSearch && matchesStatus
-  })
+      // Create download link
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `audit_logs_${new Date().toISOString().slice(0, 19).replace(/[:-]/g, '')}.${exportFormat}`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+      setShowExport(false)
+    } catch (error) {
+      console.error('Export failed:', error)
+    } finally {
+      setIsExporting(false)
+    }
+  }
 
-  const statusCounts = logs.reduce((acc, log) => {
-    acc[log.status] = (acc[log.status] || 0) + 1
-    return acc
-  }, {} as Record<string, number>)
+  // Get unique categories from the logs
+  const categories = [...new Set(logs.map((log) => log.tool_category))]
 
   return (
     <div className="space-y-4 md:space-y-6">
+      {/* Page Header */}
       <motion.div
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
+        className="flex flex-col md:flex-row md:items-center md:justify-between gap-4"
       >
-        <h1 className="text-3xl md:text-4xl font-bold gradient-text mb-2">Audit Log</h1>
-        <p className="text-sm md:text-base text-muted-foreground">
-          Complete history of all tool executions
-        </p>
+        <div>
+          <h1 className="text-3xl md:text-4xl font-bold gradient-text mb-2">Audit Log</h1>
+          <p className="text-sm md:text-base text-muted-foreground">
+            Complete history of all tool executions
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          onClick={() => setShowExport(!showExport)}
+          className="w-full md:w-auto"
+        >
+          <Download className="w-4 h-4 mr-2" />
+          Export
+        </Button>
       </motion.div>
 
+      {/* Export Panel */}
+      {showExport && (
+        <motion.div
+          initial={{ opacity: 0, height: 0 }}
+          animate={{ opacity: 1, height: 'auto' }}
+          exit={{ opacity: 0, height: 0 }}
+        >
+          <Card className="border-primary/50 bg-primary/5">
+            <CardContent className="pt-6">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+                <div className="flex-1">
+                  <h3 className="font-semibold mb-2">Export Audit Logs</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Export {filtered} logs matching current filters
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 w-full sm:w-auto">
+                  <select
+                    value={exportFormat}
+                    onChange={(e) => setExportFormat(e.target.value as 'json' | 'csv')}
+                    className="px-3 py-2 rounded-lg border border-input bg-background text-sm flex-1 sm:flex-none"
+                  >
+                    <option value="json">JSON</option>
+                    <option value="csv">CSV</option>
+                  </select>
+                  <Button onClick={handleExport} disabled={isExporting}>
+                    {isExporting ? 'Exporting...' : 'Download'}
+                  </Button>
+                  <Button variant="ghost" size="icon" onClick={() => setShowExport(false)}>
+                    <X className="w-4 h-4" />
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+      )}
+
       {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <StatCard
-          label="Total Executions"
-          value={logs.length}
+          label="Total Logs"
+          value={total}
           icon={FileText}
           delay={0}
         />
         <StatCard
-          label="Successful"
-          value={statusCounts.success || 0}
+          label="Showing"
+          value={logs.length}
           icon={FileText}
-          variant="success"
+          variant="default"
           delay={0.1}
         />
         <StatCard
-          label="Errors"
-          value={statusCounts.error || 0}
+          label="Page"
+          value={`${page + 1} / ${totalPages || 1}`}
           icon={FileText}
-          variant="error"
+          variant="default"
           delay={0.2}
         />
         <StatCard
-          label="Blocked"
-          value={statusCounts.blocked || 0}
+          label="Filtered"
+          value={filtered}
           icon={FileText}
-          variant="warning"
+          variant="default"
           delay={0.3}
         />
       </div>
@@ -84,17 +164,23 @@ export default function AuditLogPage() {
             <div className="flex-1 relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
-                placeholder="Search by tool name or category..."
+                placeholder="Search by tool name, category, or error message..."
                 value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                onChange={(e) => {
+                  setSearchTerm(e.target.value)
+                  setPage(0) // Reset to first page on search
+                }}
                 className="pl-10"
               />
             </div>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <select
                 value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                className="px-4 py-2 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                onChange={(e) => {
+                  setStatusFilter(e.target.value)
+                  setPage(0)
+                }}
+                className="px-3 py-2 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
               >
                 <option value="all">All Status</option>
                 <option value="success">Success</option>
@@ -102,6 +188,19 @@ export default function AuditLogPage() {
                 <option value="blocked">Blocked</option>
                 <option value="hitl_approved">HITL Approved</option>
                 <option value="hitl_rejected">HITL Rejected</option>
+              </select>
+              <select
+                value={categoryFilter}
+                onChange={(e) => {
+                  setCategoryFilter(e.target.value)
+                  setPage(0)
+                }}
+                className="px-3 py-2 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              >
+                <option value="all">All Categories</option>
+                {categories.map((cat) => (
+                  <option key={cat} value={cat}>{cat}</option>
+                ))}
               </select>
             </div>
           </div>
@@ -111,16 +210,20 @@ export default function AuditLogPage() {
       {/* Log Table */}
       <Card>
         <CardHeader>
-          <CardTitle>Execution History</CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle>Execution History</CardTitle>
+            <Badge variant="default">{filtered} logs</Badge>
+          </div>
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <div className="text-center py-12 text-muted-foreground">
-              Loading audit logs...
+            <div className="flex items-center justify-center py-12">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
             </div>
-          ) : filteredLogs.length === 0 ? (
+          ) : logs.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
-              No logs found matching your filters
+              <Search className="w-12 h-12 mx-auto mb-3 opacity-50" />
+              <p>No logs found matching your filters</p>
             </div>
           ) : (
             <div className="overflow-x-auto -mx-4 md:mx-0">
@@ -146,12 +249,12 @@ export default function AuditLogPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredLogs.map((log, index) => (
+                    {logs.map((log, index) => (
                       <motion.tr
                         key={log.id}
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: index * 0.02 }}
+                        transition={{ delay: Math.min(index * 0.02, 0.5) }}
                         className="border-b border-border/50 hover:bg-accent/50 transition-colors"
                       >
                         <td className="py-3 px-3 md:px-4 text-xs md:text-sm">
@@ -181,6 +284,36 @@ export default function AuditLogPage() {
               </div>
             </div>
           )}
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between mt-4 pt-4 border-t border-border">
+              <p className="text-sm text-muted-foreground">
+                Showing {page * pageSize + 1} - {Math.min((page + 1) * pageSize, total)} of {total}
+              </p>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage((p) => Math.max(0, p - 1))}
+                  disabled={page === 0}
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </Button>
+                <span className="text-sm">
+                  Page {page + 1} of {totalPages}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+                  disabled={page >= totalPages - 1}
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </Button>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>
@@ -195,7 +328,7 @@ function StatCard({
   delay = 0,
 }: {
   label: string
-  value: number
+  value: number | string
   icon: any
   variant?: 'default' | 'success' | 'error' | 'warning'
   delay?: number
@@ -218,11 +351,11 @@ function StatCard({
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-muted-foreground mb-1">{label}</p>
-              <p className={`text-3xl font-bold ${variantClasses[variant]}`}>
+              <p className={`text-xl md:text-3xl font-bold ${variantClasses[variant]}`}>
                 {value}
               </p>
             </div>
-            <Icon className={`w-8 h-8 ${variantClasses[variant]} opacity-50`} />
+            <Icon className={`w-6 h-6 md:w-8 md:h-8 ${variantClasses[variant]} opacity-50`} />
           </div>
         </CardContent>
       </Card>

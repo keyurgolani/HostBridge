@@ -1,7 +1,7 @@
 import { Outlet, NavLink, useLocation } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Bell, Activity, FileText, LogOut, Menu, X, AlertCircle, CheckCircle, LayoutDashboard } from 'lucide-react'
-import { useState, useEffect } from 'react'
+import { Bell, Activity, FileText, LogOut, Menu, X, AlertCircle, CheckCircle, LayoutDashboard, Wrench, Settings } from 'lucide-react'
+import { useState, useEffect, useCallback } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useAuthStore } from '@/store/authStore'
 import { AuroraBackground } from '../effects/AuroraBackground'
@@ -24,6 +24,29 @@ export default function DashboardLayout() {
     refetchInterval: 10000,
   })
 
+  // Request notification permission on mount
+  const requestNotificationPermission = useCallback(async () => {
+    if ('Notification' in window && Notification.permission === 'default') {
+      await Notification.requestPermission()
+    }
+  }, [])
+
+  // Send browser notification for new HITL requests
+  const sendHITLNotification = useCallback((count: number) => {
+    if ('Notification' in window && Notification.permission === 'granted') {
+      new Notification('HostBridge - HITL Request', {
+        body: `You have ${count} pending approval request${count > 1 ? 's' : ''}`,
+        icon: '/admin/favicon.ico',
+        tag: 'hitl-request',
+        requireInteraction: true,
+      })
+    }
+  }, [])
+
+  useEffect(() => {
+    requestNotificationPermission()
+  }, [requestNotificationPermission])
+
   // Listen for HITL updates
   useEffect(() => {
     if (!wsClient.isConnected()) {
@@ -34,7 +57,11 @@ export default function DashboardLayout() {
       if (message.type === 'pending_requests') {
         setPendingCount(message.data.length)
       } else if (message.type === 'hitl_request') {
-        setPendingCount((prev) => prev + 1)
+        setPendingCount((prev) => {
+          const newCount = prev + 1
+          sendHITLNotification(newCount)
+          return newCount
+        })
       } else if (message.type === 'hitl_update') {
         if (message.data.status !== 'pending') {
           setPendingCount((prev) => Math.max(0, prev - 1))
@@ -45,13 +72,15 @@ export default function DashboardLayout() {
     return () => {
       unsubscribe()
     }
-  }, [])
+  }, [sendHITLNotification])
 
   const navItems = [
     { to: '/', icon: LayoutDashboard, label: 'Dashboard', exact: true },
     { to: '/hitl', icon: Bell, label: 'HITL Queue', badge: pendingCount },
     { to: '/audit', icon: FileText, label: 'Audit Log' },
     { to: '/health', icon: Activity, label: 'System Health' },
+    { to: '/tools', icon: Wrench, label: 'Tool Explorer' },
+    { to: '/config', icon: Settings, label: 'Configuration' },
   ]
 
   const currentPage = navItems.find(item => {

@@ -7,6 +7,8 @@ import DashboardPage from './pages/DashboardPage'
 import HITLQueuePage from './pages/HITLQueuePage'
 import AuditLogPage from './pages/AuditLogPage'
 import SystemHealthPage from './pages/SystemHealthPage'
+import ToolExplorerPage from './pages/ToolExplorerPage'
+import ConfigPage from './pages/ConfigPage'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -45,6 +47,8 @@ function App() {
             <Route path="hitl" element={<HITLQueuePage />} />
             <Route path="audit" element={<AuditLogPage />} />
             <Route path="health" element={<SystemHealthPage />} />
+            <Route path="tools" element={<ToolExplorerPage />} />
+            <Route path="config" element={<ConfigPage />} />
           </Route>
         </Routes>
       </BrowserRouter>

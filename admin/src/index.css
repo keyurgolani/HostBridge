@@ -150,3 +150,167 @@
   background-image: radial-gradient(rgba(255, 255, 255, 0.1) 1px, transparent 1px);
   background-size: 20px 20px;
 }
+
+/* Mobile-specific improvements */
+@media (max-width: 768px) {
+  /* Better touch targets */
+  button, a, [role="button"] {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  /* Prevent horizontal scroll */
+  .overflow-x-auto {
+    -webkit-overflow-scrolling: touch;
+    scroll-behavior: smooth;
+  }
+
+  /* Better table scrolling on mobile */
+  table {
+    display: block;
+    max-width: 100%;
+  }
+
+  /* Improve card spacing */
+  .space-y-4 > * + * {
+    margin-top: 0.75rem;
+  }
+
+  /* Better input sizing */
+  input, select, textarea {
+    font-size: 16px !important; /* Prevents zoom on iOS */
+  }
+
+  /* Hide desktop-only elements */
+  .desktop-only {
+    display: none !important;
+  }
+
+  /* Full-width cards on mobile */
+  .card-grid > * {
+    width: 100%;
+  }
+
+  /* Improve navigation */
+  nav a {
+    padding: 0.75rem 1rem;
+  }
+
+  /* Better modal/fullscreen handling */
+  .fixed {
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Improve badges on mobile */
+  .badge {
+    font-size: 0.75rem;
+    padding: 0.125rem 0.5rem;
+  }
+
+  /* Better spacing for form elements */
+  .form-group {
+    margin-bottom: 1rem;
+  }
+
+  /* Improve code blocks on mobile */
+  pre, code {
+    font-size: 0.75rem;
+    overflow-x: auto;
+    word-break: break-all;
+  }
+
+  /* Safe area insets for notched devices */
+  .safe-area-top {
+    padding-top: env(safe-area-inset-top);
+  }
+
+  .safe-area-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+/* Tablet adjustments */
+@media (min-width: 768px) and (max-width: 1024px) {
+  /* Slightly smaller spacing on tablets */
+  .space-y-6 > * + * {
+    margin-top: 1.25rem;
+  }
+}
+
+/* Large screen optimizations */
+@media (min-width: 1920px) {
+  /* Wider max-width for large screens */
+  .max-w-\[1920px\] {
+    max-width: 2400px;
+  }
+}
+
+/* Touch device optimizations */
+@media (hover: none) and (pointer: coarse) {
+  /* Remove hover effects on touch devices */
+  .hover\:bg-accent:hover {
+    background-color: transparent;
+  }
+
+  /* Add active states instead */
+  .hover\:bg-accent:active {
+    background-color: var(--accent);
+  }
+
+  /* Larger touch targets */
+  button, a, [role="button"] {
+    padding: 0.5rem 0.75rem;
+  }
+}
+
+/* Dark mode preference */
+@media (prefers-color-scheme: dark) {
+  :root:not(.light) {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 217.2 91.2% 59.8%;
+    --primary-foreground: 222.2 47.4% 11.2%;
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 224.3 76.3% 48%;
+  }
+}
+
+/* Reduced motion preference */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Print styles */
+@media print {
+  .glass, .glow, .glow-green, .glow-red {
+    background: white !important;
+    box-shadow: none !important;
+  }
+
+  nav, header, footer {
+    display: none !important;
+  }
+
+  main {
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+}
