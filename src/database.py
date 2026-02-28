@@ -1,12 +1,27 @@
 """Database initialization and management."""
 
 import aiosqlite
+import sqlite3
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
 from src.logging_config import get_logger
 
 logger = get_logger(__name__)
+
+
+# Configure SQLite datetime adapters for Python 3.12+
+def adapt_datetime_iso(val):
+    """Adapt datetime.datetime to timezone-aware ISO 8601 date."""
+    return val.isoformat()
+
+def convert_datetime(val):
+    """Convert ISO 8601 datetime to datetime.datetime object."""
+    return datetime.fromisoformat(val.decode())
+
+sqlite3.register_adapter(datetime, adapt_datetime_iso)
+sqlite3.register_converter("timestamp", convert_datetime)
 
 
 class Database:
@@ -26,7 +41,10 @@ class Database:
     
     async def connect(self):
         """Connect to database and initialize schema."""
-        self._connection = await aiosqlite.connect(self.db_path)
+        self._connection = await aiosqlite.connect(
+            self.db_path,
+            detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES
+        )
         self._connection.row_factory = aiosqlite.Row
         
         # Enable WAL mode for better concurrency

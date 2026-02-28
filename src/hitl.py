@@ -2,7 +2,7 @@
 
 import asyncio
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, Optional, Literal
 from dataclasses import dataclass, field
 
@@ -136,7 +136,7 @@ class HITLManager:
             HITLRequest object
         """
         request_id = str(uuid.uuid4())
-        created_at = datetime.utcnow()
+        created_at = datetime.now(timezone.utc)
         ttl = ttl_seconds or self.default_ttl
         
         hitl_request = HITLRequest(
@@ -256,7 +256,7 @@ class HITLManager:
         # Update request
         hitl_request.status = "approved"
         hitl_request.reviewed_by = reviewer
-        hitl_request.reviewed_at = datetime.utcnow()
+        hitl_request.reviewed_at = datetime.now(timezone.utc)
         hitl_request.reviewer_note = note
         
         # Update database
@@ -293,7 +293,7 @@ class HITLManager:
         # Update request
         hitl_request.status = "rejected"
         hitl_request.reviewed_by = reviewer
-        hitl_request.reviewed_at = datetime.utcnow()
+        hitl_request.reviewed_at = datetime.now(timezone.utc)
         hitl_request.reviewer_note = note
         
         # Update database
@@ -356,7 +356,7 @@ class HITLManager:
             try:
                 await asyncio.sleep(10)  # Check every 10 seconds
                 
-                now = datetime.utcnow()
+                now = datetime.now(timezone.utc)
                 expired_ids = []
                 
                 for request_id, hitl_request in self._pending_requests.items():

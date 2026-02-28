@@ -5,7 +5,7 @@ import sys
 import tempfile
 import pytest
 from pathlib import Path
-from httpx import AsyncClient
+from httpx import AsyncClient, ASGITransport
 
 # Set up test environment BEFORE any imports
 TEST_WORKSPACE = tempfile.mkdtemp()
@@ -40,11 +40,17 @@ async def client():
     
     src.database.Database.__init__ = patched_db_init
     
-    # Now import the app
-    from src.main import app
+    # Now import the app and initialize database
+    from src.main import app, db
     
-    async with AsyncClient(app=app, base_url="http://test") as ac:
+    # Connect to database before tests
+    await db.connect()
+    
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         yield ac
+    
+    # Cleanup
+    await db.close()
     
     # Restore originals
     src.config.load_config = original_load
@@ -254,10 +260,15 @@ class TestAuditLogging:
         # Check audit log
         from src.main import audit_logger
         
-        logs = await audit_logger.get_recent_logs(limit=1)
+        # Get more logs to find the error one (in case previous tests added logs)
+        logs = await audit_logger.get_recent_logs(limit=10)
         assert len(logs) > 0
         
-        last_log = logs[0]
+        # Find the error log for this specific request
+        error_logs = [log for log in logs if log["status"] == "error" and log["tool_name"] == "read"]
+        assert len(error_logs) > 0
+        
+        last_log = error_logs[0]
         assert last_log["tool_name"] == "read"
         assert last_log["status"] == "error"
         assert last_log["error_message"] is not None
