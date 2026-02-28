@@ -7,6 +7,9 @@ __pycache__/
 build/
 develop-eggs/
 dist/
+
+# Static files (build artifacts from admin/dist)
+static/
 downloads/
 eggs/
 .eggs/
