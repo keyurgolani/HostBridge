@@ -53,6 +53,7 @@ class ToolPolicyConfig(BaseModel):
     block_patterns: List[str] = Field(default_factory=list)
     allow_commands: List[str] = Field(default_factory=list)
     block_commands: List[str] = Field(default_factory=list)
+    allow_safe_commands: bool = False  # For shell: allow safe commands without HITL
 
 
 class ToolsConfig(BaseModel):
@@ -60,6 +61,7 @@ class ToolsConfig(BaseModel):
     defaults: ToolPolicyConfig = Field(default_factory=lambda: ToolPolicyConfig(workspace_override="hitl"))
     fs: Dict[str, ToolPolicyConfig] = Field(default_factory=dict)
     workspace: Dict[str, ToolPolicyConfig] = Field(default_factory=dict)
+    shell: Dict[str, ToolPolicyConfig] = Field(default_factory=dict)
 
 
 class Config(BaseModel):

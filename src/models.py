@@ -54,6 +54,82 @@ class WorkspaceInfoResponse(BaseModel):
     secret_count: int = Field(0, description="Number of configured secrets")
 
 
+# Filesystem list models
+
+class FsListRequest(BaseModel):
+    """Request model for fs_list tool."""
+    path: str = Field(".", description="Directory path relative to workspace")
+    workspace_dir: Optional[str] = Field(None, description="Override workspace directory")
+    recursive: bool = Field(False, description="List subdirectories recursively")
+    max_depth: int = Field(3, description="Maximum depth for recursive listing")
+    include_hidden: bool = Field(False, description="Include hidden files (starting with .)")
+    pattern: Optional[str] = Field(None, description="Glob pattern filter (e.g., '*.py', 'test_*.txt')")
+
+
+class FsListEntry(BaseModel):
+    """Single entry in directory listing."""
+    name: str = Field(..., description="File or directory name")
+    type: str = Field(..., description="Entry type: 'file' or 'directory'")
+    size: int = Field(..., description="Size in bytes (0 for directories)")
+    modified: str = Field(..., description="Last modified timestamp")
+    permissions: str = Field(..., description="Unix permissions string")
+
+
+class FsListResponse(BaseModel):
+    """Response model for fs_list tool."""
+    entries: list[FsListEntry] = Field(..., description="Directory entries")
+    total_entries: int = Field(..., description="Total number of entries")
+    path: str = Field(..., description="Resolved directory path")
+
+
+# Filesystem search models
+
+class FsSearchRequest(BaseModel):
+    """Request model for fs_search tool."""
+    query: str = Field(..., description="Search pattern")
+    path: str = Field(".", description="Directory to search in")
+    workspace_dir: Optional[str] = Field(None, description="Override workspace directory")
+    search_type: str = Field("filename", description="Search type: 'filename', 'content', or 'both'")
+    regex: bool = Field(False, description="Treat query as regex pattern")
+    max_results: int = Field(50, description="Maximum number of results to return")
+    include_content_preview: bool = Field(True, description="Include content preview for matches")
+
+
+class FsSearchMatch(BaseModel):
+    """Single search result."""
+    path: str = Field(..., description="File path")
+    type: str = Field(..., description="Match type: 'filename' or 'content'")
+    match_line: Optional[int] = Field(None, description="Line number for content matches")
+    preview: Optional[str] = Field(None, description="Content preview around match")
+
+
+class FsSearchResponse(BaseModel):
+    """Response model for fs_search tool."""
+    results: list[FsSearchMatch] = Field(..., description="Search results")
+    total_matches: int = Field(..., description="Total number of matches found")
+    search_time_ms: int = Field(..., description="Search duration in milliseconds")
+
+
+# Shell execution models
+
+class ShellExecuteRequest(BaseModel):
+    """Request model for shell_execute tool."""
+    command: str = Field(..., description="Shell command to execute")
+    workspace_dir: Optional[str] = Field(None, description="Working directory for command execution")
+    timeout: int = Field(60, description="Timeout in seconds")
+    env: Optional[dict[str, str]] = Field(None, description="Additional environment variables (use {{secret:KEY}} for sensitive values)")
+
+
+class ShellExecuteResponse(BaseModel):
+    """Response model for shell_execute tool."""
+    stdout: str = Field(..., description="Standard output")
+    stderr: str = Field(..., description="Standard error")
+    exit_code: int = Field(..., description="Exit code")
+    duration_ms: int = Field(..., description="Execution duration in milliseconds")
+    command: str = Field(..., description="The command as executed")
+    working_directory: str = Field(..., description="Working directory used")
+
+
 # Error response model
 
 class ErrorResponse(BaseModel):

@@ -2,7 +2,7 @@
 
 import time
 from contextlib import asynccontextmanager
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -19,11 +19,18 @@ from src.policy import PolicyEngine
 from src.hitl import HITLManager
 from src.tools.fs_tools import FilesystemTools
 from src.tools.workspace_tools import WorkspaceTools
+from src.tools.shell_tools import ShellTools
 from src.models import (
     FsReadRequest,
     FsReadResponse,
     FsWriteRequest,
     FsWriteResponse,
+    FsListRequest,
+    FsListResponse,
+    FsSearchRequest,
+    FsSearchResponse,
+    ShellExecuteRequest,
+    ShellExecuteResponse,
     WorkspaceInfoResponse,
     ErrorResponse,
 )
@@ -43,6 +50,7 @@ hitl_manager = HITLManager(db, config.hitl.default_ttl_seconds)
 # Initialize tools
 fs_tools = FilesystemTools(workspace_manager)
 workspace_tools = WorkspaceTools(workspace_manager)
+shell_tools = ShellTools(workspace_manager)
 
 
 @asynccontextmanager
@@ -164,6 +172,8 @@ async def execute_tool(
     params: Dict[str, Any],
     tool_func,
     protocol: str = "openapi",
+    force_hitl: bool = False,
+    hitl_reason: Optional[str] = None,
 ):
     """Execute a tool with policy enforcement and audit logging.
     
@@ -173,14 +183,20 @@ async def execute_tool(
         params: Tool parameters
         tool_func: Tool function to execute
         protocol: Protocol used (openapi or mcp)
+        force_hitl: Force HITL approval regardless of policy
+        hitl_reason: Reason for HITL requirement
         
     Returns:
         Tool execution result
     """
     start_time = time.time()
     
-    # Policy check
-    decision, reason = policy_engine.evaluate(tool_category, tool_name, params)
+    # Policy check (skip if force_hitl is True)
+    if force_hitl:
+        decision = "hitl"
+        reason = hitl_reason or "Requires approval"
+    else:
+        decision, reason = policy_engine.evaluate(tool_category, tool_name, params)
     
     if decision == "block":
         # Log blocked execution
@@ -406,10 +422,6 @@ async def workspace_info_sub() -> WorkspaceInfoResponse:
     )
 
 
-# Mount sub-apps
-app.mount("/tools/fs", fs_app)
-app.mount("/tools/workspace", workspace_app)
-
 # Include admin API
 from src.admin_api import router as admin_router
 app.include_router(admin_router)
@@ -623,9 +635,277 @@ async def fs_write_sub(request: FsWriteRequest) -> FsWriteResponse:
     )
 
 
+# fs_list endpoints
+@app.post(
+    "/api/tools/fs/list",
+    operation_id="fs_list",
+    summary="List Directory",
+    description="""List contents of a directory.
+
+The path is relative to the workspace directory unless an absolute 
+path within the workspace is provided.
+
+Use this tool when you need to:
+- Browse directory contents
+- Find files in a directory
+- Explore project structure
+- Check if files exist
+
+Optional: path (default: '.'), workspace_dir, recursive, max_depth, include_hidden, pattern
+
+Supports glob patterns like '*.py', 'test_*.txt' for filtering.""",
+    response_model=FsListResponse,
+    tags=["filesystem"],
+)
+async def fs_list_root(request: FsListRequest) -> FsListResponse:
+    """List directory contents (root app endpoint)."""
+    return await execute_tool(
+        "fs",
+        "list",
+        request.model_dump(),
+        lambda: fs_tools.list(request),
+    )
+
+
+@fs_app.post(
+    "/list",
+    operation_id="fs_list",
+    summary="List Directory",
+    description="""List contents of a directory.
+
+The path is relative to the workspace directory unless an absolute 
+path within the workspace is provided.
+
+Use this tool when you need to:
+- Browse directory contents
+- Find files in a directory
+- Explore project structure
+- Check if files exist
+
+Optional: path (default: '.'), workspace_dir, recursive, max_depth, include_hidden, pattern
+
+Supports glob patterns like '*.py', 'test_*.txt' for filtering.""",
+    response_model=FsListResponse,
+    tags=["filesystem"],
+)
+async def fs_list_sub(request: FsListRequest) -> FsListResponse:
+    """List directory contents (sub-app endpoint)."""
+    return await execute_tool(
+        "fs",
+        "list",
+        request.model_dump(),
+        lambda: fs_tools.list(request),
+    )
+
+
+# fs_search endpoints
+@app.post(
+    "/api/tools/fs/search",
+    operation_id="fs_search",
+    summary="Search Files",
+    description="""Search for files by name or content.
+
+The path is relative to the workspace directory unless an absolute 
+path within the workspace is provided.
+
+Use this tool when you need to:
+- Find files by name
+- Search file contents
+- Locate specific code or text
+- Discover files matching patterns
+
+Required: query
+Optional: path (default: '.'), workspace_dir, search_type ('filename', 'content', 'both'), 
+         regex, max_results, include_content_preview
+
+Supports both simple text search and regex patterns.""",
+    response_model=FsSearchResponse,
+    tags=["filesystem"],
+)
+async def fs_search_root(request: FsSearchRequest) -> FsSearchResponse:
+    """Search files (root app endpoint)."""
+    return await execute_tool(
+        "fs",
+        "search",
+        request.model_dump(),
+        lambda: fs_tools.search(request),
+    )
+
+
+@fs_app.post(
+    "/search",
+    operation_id="fs_search",
+    summary="Search Files",
+    description="""Search for files by name or content.
+
+The path is relative to the workspace directory unless an absolute 
+path within the workspace is provided.
+
+Use this tool when you need to:
+- Find files by name
+- Search file contents
+- Locate specific code or text
+- Discover files matching patterns
+
+Required: query
+Optional: path (default: '.'), workspace_dir, search_type ('filename', 'content', 'both'), 
+         regex, max_results, include_content_preview
+
+Supports both simple text search and regex patterns.""",
+    response_model=FsSearchResponse,
+    tags=["filesystem"],
+)
+async def fs_search_sub(request: FsSearchRequest) -> FsSearchResponse:
+    """Search files (sub-app endpoint)."""
+    return await execute_tool(
+        "fs",
+        "search",
+        request.model_dump(),
+        lambda: fs_tools.search(request),
+    )
+
+
+# shell_execute endpoints
+@app.post(
+    "/api/tools/shell/execute",
+    operation_id="shell_execute",
+    summary="Execute Shell Command",
+    description="""Execute a shell command in the workspace.
+
+Use this tool when you need to:
+- Run system commands
+- Execute build scripts
+- Run tests
+- Interact with CLI tools
+- Perform system operations
+
+Required: command
+Optional: workspace_dir, timeout (default: 60s), env (environment variables)
+
+Security notes:
+- Commands with dangerous metacharacters (;, |, &, >, <, etc.) require approval
+- Commands not in the allowlist require approval
+- Use {{secret:KEY}} syntax in env values for sensitive data
+- Output is truncated at 100KB
+
+Allowlisted commands: ls, cat, echo, pwd, git, python, node, npm, docker, curl, and more.""",
+    response_model=ShellExecuteResponse,
+    tags=["shell"],
+)
+async def shell_execute_root(request: ShellExecuteRequest) -> ShellExecuteResponse:
+    """Execute shell command (root app endpoint)."""
+    # Check command safety for policy
+    is_safe, reason = shell_tools._check_command_safety(request.command)
+    
+    # Evaluate policy with safety check
+    decision, policy_reason = policy_engine.evaluate_shell_command(
+        request.command,
+        is_safe,
+        reason,
+    )
+    
+    # Handle policy decision
+    if decision == "block":
+        raise SecurityError(policy_reason or "Command execution blocked by policy")
+    
+    # Execute with HITL if needed
+    if decision == "hitl":
+        return await execute_tool(
+            "shell",
+            "execute",
+            request.model_dump(),
+            lambda: shell_tools.execute(request),
+            force_hitl=True,
+            hitl_reason=policy_reason or reason,
+        )
+    
+    # Execute normally
+    return await execute_tool(
+        "shell",
+        "execute",
+        request.model_dump(),
+        lambda: shell_tools.execute(request),
+    )
+
+
+# Create shell sub-app
+shell_app = FastAPI(
+    title="HostBridge — Shell Tools",
+    description="Shell command execution for HostBridge",
+    version="0.1.0",
+)
+
+
+@shell_app.post(
+    "/execute",
+    operation_id="shell_execute",
+    summary="Execute Shell Command",
+    description="""Execute a shell command in the workspace.
+
+Use this tool when you need to:
+- Run system commands
+- Execute build scripts
+- Run tests
+- Interact with CLI tools
+- Perform system operations
+
+Required: command
+Optional: workspace_dir, timeout (default: 60s), env (environment variables)
+
+Security notes:
+- Commands with dangerous metacharacters (;, |, &, >, <, etc.) require approval
+- Commands not in the allowlist require approval
+- Use {{secret:KEY}} syntax in env values for sensitive data
+- Output is truncated at 100KB
+
+Allowlisted commands: ls, cat, echo, pwd, git, python, node, npm, docker, curl, and more.""",
+    response_model=ShellExecuteResponse,
+    tags=["shell"],
+)
+async def shell_execute_sub(request: ShellExecuteRequest) -> ShellExecuteResponse:
+    """Execute shell command (sub-app endpoint)."""
+    # Check command safety for policy
+    is_safe, reason = shell_tools._check_command_safety(request.command)
+    
+    # Evaluate policy with safety check
+    decision, policy_reason = policy_engine.evaluate_shell_command(
+        request.command,
+        is_safe,
+        reason,
+    )
+    
+    # Handle policy decision
+    if decision == "block":
+        raise SecurityError(policy_reason or "Command execution blocked by policy")
+    
+    # Execute with HITL if needed
+    if decision == "hitl":
+        return await execute_tool(
+            "shell",
+            "execute",
+            request.model_dump(),
+            lambda: shell_tools.execute(request),
+            force_hitl=True,
+            hitl_reason=policy_reason or reason,
+        )
+    
+    # Execute normally
+    return await execute_tool(
+        "shell",
+        "execute",
+        request.model_dump(),
+        lambda: shell_tools.execute(request),
+    )
+
+
 # Initialize and mount MCP server using Streamable HTTP transport (recommended)
 # IMPORTANT: This must be done AFTER all endpoints are defined, as fastapi-mcp
 # discovers tools at mount time
 mcp = FastApiMCP(app)
 mcp.mount_http()
 logger.info("mcp_server_mounted", path="/mcp", transport="streamable_http")
+
+# Mount sub-apps
+app.mount("/tools/fs", fs_app)
+app.mount("/tools/workspace", workspace_app)
+app.mount("/tools/shell", shell_app)

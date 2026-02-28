@@ -188,3 +188,37 @@ class PolicyEngine:
                     return True
         
         return False
+
+    def evaluate_shell_command(
+        self,
+        command: str,
+        is_safe: bool,
+        safety_reason: str,
+    ) -> tuple[PolicyDecision, Optional[str]]:
+        """Evaluate policy for shell command execution.
+        
+        Args:
+            command: Shell command
+            is_safe: Whether command is considered safe
+            safety_reason: Reason for safety determination
+            
+        Returns:
+            Tuple of (decision, reason)
+        """
+        # Get shell execute policy
+        policy = self._get_tool_policy("shell", "execute")
+        
+        # If policy is block, always block
+        if policy.policy == "block":
+            return "block", "Shell execution is blocked by policy"
+        
+        # If policy is hitl, always require approval
+        if policy.policy == "hitl":
+            # Check if safe commands are allowed
+            allow_safe = getattr(policy, "allow_safe_commands", False)
+            if allow_safe and is_safe:
+                return "allow", None
+            return "hitl", safety_reason if not is_safe else "Shell command requires approval"
+        
+        # Policy is allow
+        return "allow", None

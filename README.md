@@ -2,7 +2,7 @@
 
 **Unified MCP + OpenAPI Tool Server for Self-Hosted LLM Stacks**
 
-Version: 0.1.0 (Slice 3 Complete)  
+Version: 0.1.0  
 Status: ✅ Production Ready
 
 ---
@@ -20,10 +20,14 @@ Built-in admin dashboard provides human oversight, HITL (Human-in-the-Loop) appr
 
 ## Features
 
-### ✅ Implemented (Slice 1-3)
+### ✅ Implemented
 
 - **Dual Protocol Support:** MCP + OpenAPI simultaneously
-- **Filesystem Tools:** Read and write files with workspace sandboxing
+- **Filesystem Tools:** 
+  - Read and write files with workspace sandboxing
+  - List directory contents with recursive traversal
+  - Search files by name or content with regex support
+- **Shell Execution:** Execute commands with security controls and allowlisting
 - **Workspace Management:** Secure path resolution and boundary enforcement
 - **HITL System:** Real-time approval workflow for sensitive operations
 - **Admin Dashboard:** Premium UI with real-time updates
@@ -32,9 +36,8 @@ Built-in admin dashboard provides human oversight, HITL (Human-in-the-Loop) appr
 - **Secret Management:** Secure secret resolution with template syntax
 - **WebSocket Support:** Real-time notifications
 
-### 🚧 Coming Soon (Slice 4+)
+### 🚧 Coming Soon
 
-- Shell execution with command allowlisting
 - Git tools (status, commit, push, pull, etc.)
 - Docker container management
 - HTTP client with SSRF protection
@@ -59,13 +62,28 @@ http://localhost:8080/admin/
 
 **Default Password:** `admin`
 
-### 3. Test a Tool
+### 3. Test the Tools
 
 ```bash
 # Read a file
 curl -X POST http://localhost:8080/api/tools/fs/read \
   -H "Content-Type: application/json" \
   -d '{"path": "README.md"}'
+
+# List directory contents
+curl -X POST http://localhost:8080/api/tools/fs/list \
+  -H "Content-Type: application/json" \
+  -d '{"path": ".", "recursive": true}'
+
+# Search for files
+curl -X POST http://localhost:8080/api/tools/fs/search \
+  -H "Content-Type: application/json" \
+  -d '{"query": "test", "search_type": "both"}'
+
+# Execute a shell command
+curl -X POST http://localhost:8080/api/tools/shell/execute \
+  -H "Content-Type: application/json" \
+  -d '{"command": "ls -la"}'
 
 # Write a file (triggers HITL for .conf files)
 curl -X POST http://localhost:8080/api/tools/fs/write \
@@ -173,25 +191,32 @@ http://localhost:8080/admin/
 
 ## Available Tools
 
-### Filesystem (Slice 1-2)
+### Filesystem
 
-- `fs_read` - Read file contents
+- `fs_read` - Read file contents with line range support
 - `fs_write` - Write file contents (HITL for .conf, .env, .yaml)
+- `fs_list` - List directory contents with recursive traversal and filtering
+- `fs_search` - Search files by name or content with regex support
 
-### Workspace (Slice 1-2)
+### Shell
 
-- `workspace_info` - Get workspace configuration
+- `shell_execute` - Execute shell commands with security controls
+  - Allowlist of safe commands (ls, cat, echo, git, python, npm, docker, etc.)
+  - Dangerous metacharacter detection (;, |, &, >, <, etc.)
+  - HITL for non-allowlisted or unsafe commands
+  - Output truncation and timeout support
+
+### Workspace
+
+- `workspace_info` - Get workspace configuration and disk usage
 
 ### Coming Soon
 
-- `fs_list` - List directory contents
-- `fs_search` - Search files by name/content
-- `shell_execute` - Execute shell commands
-- `git_*` - Git operations
-- `docker_*` - Docker management
-- `http_request` - HTTP client
-- `memory_*` - Knowledge graph
-- `plan_*` - DAG execution
+- `git_*` - Git operations (status, commit, push, pull, etc.)
+- `docker_*` - Docker management (list, inspect, logs, control)
+- `http_request` - HTTP client with SSRF protection
+- `memory_*` - Knowledge graph storage and retrieval
+- `plan_*` - DAG-based multi-step execution
 
 ---
 
@@ -287,42 +312,40 @@ npm run dev
 
 ## Roadmap
 
-### ✅ Slice 0: Project Scaffold (Complete)
-- FastAPI setup
-- Docker configuration
-- Basic health check
+### ✅ Core Infrastructure (Complete)
+- FastAPI setup with dual protocol support
+- Workspace management with security
+- Policy engine with allow/block/HITL rules
+- Audit logging system
+- Database setup (SQLite)
 
-### ✅ Slice 1: Core Infrastructure (Complete)
-- Workspace management
-- Policy engine
-- Audit logging
-- Database setup
+### ✅ HITL System (Complete)
+- HITL manager with async event handling
+- WebSocket support for real-time notifications
+- Synchronous blocking workflow
+- Timeout and expiry handling
 
-### ✅ Slice 2: HITL System (Complete)
-- HITL manager
-- WebSocket support
-- fs_write tool with HITL
-
-### ✅ Slice 3: Admin Dashboard MVP (Complete)
-- React dashboard
+### ✅ Admin Dashboard (Complete)
+- React dashboard with premium UI
 - Login & authentication
-- HITL queue page
-- Audit log page
-- System health page
+- HITL queue with real-time updates
+- Audit log with search/filter
+- System health monitoring
 
-### 🚧 Slice 4: Remaining FS + Shell Tools (Next)
-- fs_list
-- fs_search
-- shell_execute with allowlist
+### ✅ Filesystem & Shell Tools (Complete)
+- fs_read, fs_write with HITL policies
+- fs_list with recursive traversal
+- fs_search with regex support
+- shell_execute with security controls
 
-### 📋 Slice 5-11: Additional Features
-- Git tools
-- Docker tools
-- Secret management
-- HTTP client
+### 📋 Upcoming Features
+- Git tools (status, commit, push, pull, etc.)
+- Docker tools (container management)
+- Secret management with template resolution
+- HTTP client with SSRF protection
 - Memory system (knowledge graph)
-- Plan execution (DAG)
-- Dashboard polish
+- Plan execution (DAG-based workflows)
+- Dashboard enhancements
 
 ---
 
@@ -379,6 +402,6 @@ Built following the design principles from:
 
 ---
 
-**Status:** Production Ready (Slice 3 Complete)  
+**Status:** Production Ready  
 **Version:** 0.1.0  
 **Last Updated:** February 28, 2026

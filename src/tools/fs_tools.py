@@ -1,9 +1,18 @@
 """Filesystem tool implementations."""
 
 import os
+import re
+import time
+import fnmatch
 from pathlib import Path
+from datetime import datetime
 
-from src.models import FsReadRequest, FsReadResponse, FsWriteRequest, FsWriteResponse
+from src.models import (
+    FsReadRequest, FsReadResponse, 
+    FsWriteRequest, FsWriteResponse,
+    FsListRequest, FsListResponse, FsListEntry,
+    FsSearchRequest, FsSearchResponse, FsSearchMatch
+)
 from src.workspace import WorkspaceManager, SecurityError
 from src.logging_config import get_logger
 
@@ -184,3 +193,240 @@ class FilesystemTools:
         except Exception as e:
             logger.error("file_write_error", path=resolved_path, error=str(e), exc_info=True)
             raise ValueError(f"Failed to write file: {str(e)}")
+
+    async def list(self, request: FsListRequest) -> FsListResponse:
+        """List directory contents.
+        
+        Args:
+            request: List request
+            
+        Returns:
+            Directory listing with metadata
+            
+        Raises:
+            SecurityError: If path escapes workspace
+            FileNotFoundError: If directory doesn't exist
+            ValueError: If parameters are invalid
+        """
+        # Resolve path with security checks
+        resolved_path = self.workspace.resolve_path(
+            request.path,
+            request.workspace_dir,
+        )
+        
+        # Check if directory exists
+        if not os.path.exists(resolved_path):
+            raise FileNotFoundError(
+                f"Directory not found: {request.path}"
+            )
+        
+        # Check if it's a directory
+        if not os.path.isdir(resolved_path):
+            raise ValueError(
+                f"Path is not a directory: {request.path}. "
+                f"Use fs_read to read file contents."
+            )
+        
+        entries = []
+        
+        def _list_directory(dir_path: str, current_depth: int = 0):
+            """Recursively list directory contents."""
+            if request.recursive and current_depth >= request.max_depth:
+                return
+            
+            try:
+                for entry_name in os.listdir(dir_path):
+                    # Skip hidden files if not requested
+                    if not request.include_hidden and entry_name.startswith('.'):
+                        continue
+                    
+                    entry_path = os.path.join(dir_path, entry_name)
+                    
+                    # Apply pattern filter if specified
+                    if request.pattern and not fnmatch.fnmatch(entry_name, request.pattern):
+                        # For directories in recursive mode, still traverse them
+                        if request.recursive and os.path.isdir(entry_path):
+                            _list_directory(entry_path, current_depth + 1)
+                        continue
+                    
+                    try:
+                        stat = os.stat(entry_path)
+                        is_dir = os.path.isdir(entry_path)
+                        
+                        # Get relative path from resolved_path
+                        rel_path = os.path.relpath(entry_path, resolved_path)
+                        
+                        entries.append(FsListEntry(
+                            name=rel_path if request.recursive else entry_name,
+                            type="directory" if is_dir else "file",
+                            size=0 if is_dir else stat.st_size,
+                            modified=datetime.fromtimestamp(stat.st_mtime).isoformat(),
+                            permissions=oct(stat.st_mode)[-3:],
+                        ))
+                        
+                        # Recurse into subdirectories
+                        if request.recursive and is_dir:
+                            _list_directory(entry_path, current_depth + 1)
+                    
+                    except (OSError, PermissionError) as e:
+                        logger.warning("list_entry_error", path=entry_path, error=str(e))
+                        continue
+            
+            except (OSError, PermissionError) as e:
+                logger.warning("list_directory_error", path=dir_path, error=str(e))
+        
+        # Start listing
+        _list_directory(resolved_path)
+        
+        # Sort entries: directories first, then alphabetically
+        entries.sort(key=lambda e: (e.type != "directory", e.name))
+        
+        logger.info(
+            "directory_listed",
+            path=resolved_path,
+            total_entries=len(entries),
+            recursive=request.recursive,
+        )
+        
+        return FsListResponse(
+            entries=entries,
+            total_entries=len(entries),
+            path=resolved_path,
+        )
+    
+    async def search(self, request: FsSearchRequest) -> FsSearchResponse:
+        """Search for files by name or content.
+        
+        Args:
+            request: Search request
+            
+        Returns:
+            Search results with matches
+            
+        Raises:
+            SecurityError: If path escapes workspace
+            ValueError: If parameters are invalid
+        """
+        start_time = time.time()
+        
+        # Resolve path with security checks
+        resolved_path = self.workspace.resolve_path(
+            request.path,
+            request.workspace_dir,
+        )
+        
+        # Check if directory exists
+        if not os.path.exists(resolved_path):
+            raise FileNotFoundError(
+                f"Directory not found: {request.path}"
+            )
+        
+        # Validate search type
+        if request.search_type not in ("filename", "content", "both"):
+            raise ValueError(
+                f"Invalid search_type '{request.search_type}'. "
+                f"Must be 'filename', 'content', or 'both'."
+            )
+        
+        # Compile regex pattern if needed
+        if request.regex:
+            try:
+                pattern = re.compile(request.query, re.IGNORECASE)
+            except re.error as e:
+                raise ValueError(f"Invalid regex pattern: {str(e)}")
+        else:
+            pattern = None
+        
+        results = []
+        
+        def _matches_query(text: str) -> bool:
+            """Check if text matches the query."""
+            if request.regex:
+                return pattern.search(text) is not None
+            else:
+                return request.query.lower() in text.lower()
+        
+        def _search_directory(dir_path: str):
+            """Recursively search directory."""
+            if len(results) >= request.max_results:
+                return
+            
+            try:
+                for entry_name in os.listdir(dir_path):
+                    if len(results) >= request.max_results:
+                        break
+                    
+                    entry_path = os.path.join(dir_path, entry_name)
+                    
+                    # Get relative path
+                    rel_path = os.path.relpath(entry_path, resolved_path)
+                    
+                    # Check filename match
+                    if request.search_type in ("filename", "both"):
+                        if _matches_query(entry_name):
+                            results.append(FsSearchMatch(
+                                path=rel_path,
+                                type="filename",
+                                match_line=None,
+                                preview=None,
+                            ))
+                    
+                    # Recurse into directories
+                    if os.path.isdir(entry_path):
+                        _search_directory(entry_path)
+                    
+                    # Search file content
+                    elif request.search_type in ("content", "both"):
+                        if os.path.isfile(entry_path):
+                            try:
+                                # Skip binary files
+                                with open(entry_path, 'rb') as f:
+                                    chunk = f.read(1024)
+                                    if b'\x00' in chunk:
+                                        continue
+                                
+                                # Search text content
+                                with open(entry_path, 'r', encoding='utf-8', errors='ignore') as f:
+                                    for line_num, line in enumerate(f, 1):
+                                        if len(results) >= request.max_results:
+                                            break
+                                        
+                                        if _matches_query(line):
+                                            preview = None
+                                            if request.include_content_preview:
+                                                # Get preview with context
+                                                preview = line.strip()[:200]
+                                            
+                                            results.append(FsSearchMatch(
+                                                path=rel_path,
+                                                type="content",
+                                                match_line=line_num,
+                                                preview=preview,
+                                            ))
+                            
+                            except (OSError, PermissionError, UnicodeDecodeError) as e:
+                                logger.debug("search_file_error", path=entry_path, error=str(e))
+                                continue
+            
+            except (OSError, PermissionError) as e:
+                logger.warning("search_directory_error", path=dir_path, error=str(e))
+        
+        # Start search
+        _search_directory(resolved_path)
+        
+        search_time_ms = int((time.time() - start_time) * 1000)
+        
+        logger.info(
+            "search_completed",
+            path=resolved_path,
+            query=request.query,
+            search_type=request.search_type,
+            total_matches=len(results),
+            search_time_ms=search_time_ms,
+        )
+        
+        return FsSearchResponse(
+            results=results,
+            total_matches=len(results),
+            search_time_ms=search_time_ms,
+        )

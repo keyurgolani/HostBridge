@@ -54,6 +54,40 @@ Before trying file operations, it's helpful to understand the workspace configur
 **"Show me the contents of test.conf"**
 - Reads a configuration file
 
+### Listing Directories
+
+**"List all files in the current directory"**
+- Shows files and directories in the workspace root
+
+**"Show me all Python files in the project"**
+- Lists files matching the *.py pattern
+
+**"List all files recursively up to 3 levels deep"**
+- Recursive directory listing with depth control
+
+**"Show me all files including hidden ones"**
+- Lists files including those starting with a dot
+
+**"What files are in the src directory?"**
+- Lists contents of a specific subdirectory
+
+### Searching Files
+
+**"Find all files with 'test' in the name"**
+- Searches for files by filename
+
+**"Search for files containing the word 'TODO'"**
+- Searches file contents for specific text
+
+**"Find all configuration files"**
+- Searches for files matching patterns like *.conf, *.yaml
+
+**"Search for 'import requests' in Python files"**
+- Searches file contents with specific patterns
+
+**"Find files matching the regex pattern 'test_.*\.py'"**
+- Uses regex for advanced filename matching
+
 ### Writing Files
 
 **"Create a new file called hello.txt with the content 'Hello, World!'"**
@@ -70,6 +104,55 @@ Before trying file operations, it's helpful to understand the workspace configur
 
 **"Write a configuration file at config/app.yaml with the following YAML content: [your YAML here]"**
 - Creates a configuration file (may require HITL approval depending on policy)
+
+## Shell Execution
+
+### Safe Commands
+
+**"Run 'ls -la' to see all files"**
+- Lists files with details using shell command
+
+**"Execute 'pwd' to show current directory"**
+- Shows the current working directory
+
+**"Run 'echo Hello World'"**
+- Simple echo command
+
+**"Execute 'git status' to check repository status"**
+- Runs git commands (if git is available)
+
+**"Run 'python --version' to check Python version"**
+- Checks installed software versions
+
+**"Execute 'cat README.md' to read the file"**
+- Uses shell commands to read files
+
+### Commands with Environment Variables
+
+**"Run a command with custom environment variables"**
+- Executes commands with additional env vars
+
+**"Execute 'echo $MY_VAR' with MY_VAR set to 'test'"**
+- Demonstrates environment variable usage
+
+### Working Directory Control
+
+**"Run 'ls' in the src directory"**
+- Executes command in a specific directory
+
+**"Execute 'pwd' in workspace/nested"**
+- Shows working directory control
+
+### Commands Requiring Approval
+
+**"Run 'rm -rf temp' to delete the temp directory"**
+- Dangerous commands require HITL approval
+
+**"Execute 'ls | grep test' to filter results"**
+- Commands with pipes require approval
+
+**"Run 'curl https://api.example.com > output.txt'"**
+- Commands with redirects require approval
 
 ## Understanding Tool Behavior
 
@@ -167,6 +250,14 @@ As of this version, HostBridge supports:
 - **Filesystem Tools** (category: `fs`)
   - `fs_read` - Read file contents with optional line ranges and encoding
   - `fs_write` - Write, overwrite, or append to files with security controls
+  - `fs_list` - List directory contents with recursive traversal and filtering
+  - `fs_search` - Search files by name or content with regex support
+
+- **Shell Tools** (category: `shell`)
+  - `shell_execute` - Execute shell commands with security controls
+    - Allowlist of safe commands (ls, cat, echo, git, python, npm, docker, etc.)
+    - Dangerous metacharacter detection (;, |, &, >, <, etc.)
+    - HITL for non-allowlisted or unsafe commands
 
 - **Workspace Tools** (category: `workspace`)
   - `workspace_info` - Get workspace configuration and boundaries
@@ -177,6 +268,9 @@ When using MCP clients (Claude Desktop, Cursor, etc.), tools are identified by t
 - `health_check_health_get` - Health check
 - `fs_read` - Read files
 - `fs_write` - Write files
+- `fs_list` - List directories
+- `fs_search` - Search files
+- `shell_execute` - Execute shell commands
 - `workspace_info` - Workspace information
 
 ### OpenAPI Endpoints
@@ -185,6 +279,9 @@ When using REST API directly:
 - `POST /health` - Health check
 - `POST /api/tools/fs/read` - Read files
 - `POST /api/tools/fs/write` - Write files
+- `POST /api/tools/fs/list` - List directories
+- `POST /api/tools/fs/search` - Search files
+- `POST /api/tools/shell/execute` - Execute shell commands
 - `POST /api/tools/workspace/info` - Workspace information
 
 ## Future Tools (Coming Soon)
@@ -193,10 +290,9 @@ The following tools are planned for future releases:
 
 - **Git Tools** - Status, commit, push, pull, branch management
 - **Docker Tools** - Container management, image operations
-- **Shell Tools** - Execute shell commands with output capture
-- **HTTP Tools** - Make HTTP requests with authentication
-- **Memory Tools** - Persistent key-value storage across sessions
-- **Plan Tools** - Task planning and tracking
+- **HTTP Tools** - Make HTTP requests with authentication and SSRF protection
+- **Memory Tools** - Knowledge graph storage for persistent information
+- **Plan Tools** - DAG-based multi-step task execution
 
 This document will be updated as new tools are added to the server.
 
