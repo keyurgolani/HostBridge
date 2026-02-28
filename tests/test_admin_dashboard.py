@@ -20,6 +20,7 @@ async def client():
     """Create test client."""
     # Set environment variables before importing
     os.environ["WORKSPACE_BASE_DIR"] = TEST_WORKSPACE
+    os.environ["DB_PATH"] = os.path.join(TEST_DATA_DIR, "hostbridge.db")
 
     # Patch config loading
     import src.config
@@ -32,24 +33,20 @@ async def client():
 
     src.config.load_config = patched_load
 
-    # Patch the database path to use temp directory
-    import src.database
-    original_db_init = src.database.Database.__init__
-
-    def patched_db_init(self, db_path=None):
-        if db_path is None:
-            db_path = os.path.join(TEST_DATA_DIR, "hostbridge.db")
-        original_db_init(self, db_path)
-
-    src.database.Database.__init__ = patched_db_init
-
     # Now import the app and initialize database
     from src.main import app, db
 
     # Connect to database before tests
     await db.connect()
 
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+    from src import main as main_module
+    main_module.config.workspace.base_dir = TEST_WORKSPACE
+    main_module.workspace_manager.base_dir = os.path.realpath(TEST_WORKSPACE)
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app, raise_app_exceptions=False),
+        base_url="http://test",
+    ) as ac:
         yield ac
 
     # Cleanup
@@ -57,7 +54,6 @@ async def client():
 
     # Restore originals
     src.config.load_config = original_load
-    src.database.Database.__init__ = original_db_init
 
 
 @pytest.fixture
@@ -95,7 +91,7 @@ class TestDetailedHealthEndpoint:
     @pytest.mark.asyncio
     async def test_detailed_health_returns_all_metrics(self, client, auth_headers):
         """Test that detailed health returns all expected metrics."""
-        response = client.get("/admin/api/health/detailed", cookies=auth_headers)
+        response = await client.get("/admin/api/health/detailed", cookies=auth_headers)
 
         assert response.status_code == 200
         data = response.json()
@@ -115,13 +111,13 @@ class TestDetailedHealthEndpoint:
     @pytest.mark.asyncio
     async def test_detailed_health_requires_auth(self, client):
         """Test that detailed health requires authentication."""
-        response = client.get("/admin/api/health/detailed")
+        response = await client.get("/admin/api/health/detailed")
         assert response.status_code == 401
 
     @pytest.mark.asyncio
     async def test_detailed_health_returns_numeric_values(self, client, auth_headers):
         """Test that numeric fields contain numeric values."""
-        response = client.get("/admin/api/health/detailed", cookies=auth_headers)
+        response = await client.get("/admin/api/health/detailed", cookies=auth_headers)
 
         assert response.status_code == 200
         data = response.json()
@@ -142,7 +138,7 @@ class TestToolExplorerEndpoint:
     @pytest.mark.asyncio
     async def test_list_tools_returns_tools(self, client, auth_headers):
         """Test that list tools returns a list of tools."""
-        response = client.get("/admin/api/tools", cookies=auth_headers)
+        response = await client.get("/admin/api/tools", cookies=auth_headers)
 
         assert response.status_code == 200
         data = response.json()
@@ -155,13 +151,13 @@ class TestToolExplorerEndpoint:
     @pytest.mark.asyncio
     async def test_list_tools_requires_auth(self, client):
         """Test that list tools requires authentication."""
-        response = client.get("/admin/api/tools")
+        response = await client.get("/admin/api/tools")
         assert response.status_code == 401
 
     @pytest.mark.asyncio
     async def test_tool_schema_has_required_fields(self, client, auth_headers):
         """Test that each tool has required fields."""
-        response = client.get("/admin/api/tools", cookies=auth_headers)
+        response = await client.get("/admin/api/tools", cookies=auth_headers)
 
         assert response.status_code == 200
         data = response.json()
@@ -176,13 +172,13 @@ class TestToolExplorerEndpoint:
     async def test_get_specific_tool_schema(self, client, auth_headers):
         """Test getting schema for a specific tool."""
         # First get the list of tools
-        list_response = client.get("/admin/api/tools", cookies=auth_headers)
+        list_response = await client.get("/admin/api/tools", cookies=auth_headers)
         assert list_response.status_code == 200
 
         tools = list_response.json()["tools"]
         if len(tools) > 0:
             tool = tools[0]
-            response = client.get(
+            response = await client.get(
                 f"/admin/api/tools/{tool['category']}/{tool['name']}",
                 cookies=auth_headers
             )
@@ -195,7 +191,7 @@ class TestToolExplorerEndpoint:
     @pytest.mark.asyncio
     async def test_get_nonexistent_tool_returns_404(self, client, auth_headers):
         """Test that getting a nonexistent tool returns 404."""
-        response = client.get("/admin/api/tools/nonexistent/nonexistent_tool", cookies=auth_headers)
+        response = await client.get("/admin/api/tools/nonexistent/nonexistent_tool", cookies=auth_headers)
         assert response.status_code == 404
 
 
@@ -205,7 +201,7 @@ class TestConfigEndpoint:
     @pytest.mark.asyncio
     async def test_get_config_returns_config(self, client, auth_headers):
         """Test that get config returns configuration."""
-        response = client.get("/admin/api/config", cookies=auth_headers)
+        response = await client.get("/admin/api/config", cookies=auth_headers)
 
         assert response.status_code == 200
         data = response.json()
@@ -222,13 +218,13 @@ class TestConfigEndpoint:
     @pytest.mark.asyncio
     async def test_get_config_requires_auth(self, client):
         """Test that get config requires authentication."""
-        response = client.get("/admin/api/config")
+        response = await client.get("/admin/api/config")
         assert response.status_code == 401
 
     @pytest.mark.asyncio
     async def test_config_http_config_has_required_fields(self, client, auth_headers):
         """Test that http_config has required fields."""
-        response = client.get("/admin/api/config", cookies=auth_headers)
+        response = await client.get("/admin/api/config", cookies=auth_headers)
 
         assert response.status_code == 200
         data = response.json()
@@ -249,7 +245,7 @@ class TestAuditLogFiltering:
     @pytest.mark.asyncio
     async def test_filtered_audit_logs_returns_logs(self, client, auth_headers):
         """Test that filtered audit logs returns logs."""
-        response = client.get("/admin/api/audit/filtered", cookies=auth_headers)
+        response = await client.get("/admin/api/audit/filtered", cookies=auth_headers)
 
         assert response.status_code == 200
         data = response.json()
@@ -262,13 +258,13 @@ class TestAuditLogFiltering:
     @pytest.mark.asyncio
     async def test_filtered_audit_logs_requires_auth(self, client):
         """Test that filtered audit logs requires authentication."""
-        response = client.get("/admin/api/audit/filtered")
+        response = await client.get("/admin/api/audit/filtered")
         assert response.status_code == 401
 
     @pytest.mark.asyncio
     async def test_filtered_audit_logs_with_status_filter(self, client, auth_headers):
         """Test filtering audit logs by status."""
-        response = client.get(
+        response = await client.get(
             "/admin/api/audit/filtered?status=success",
             cookies=auth_headers
         )
@@ -283,7 +279,7 @@ class TestAuditLogFiltering:
     @pytest.mark.asyncio
     async def test_filtered_audit_logs_with_category_filter(self, client, auth_headers):
         """Test filtering audit logs by category."""
-        response = client.get(
+        response = await client.get(
             "/admin/api/audit/filtered?tool_category=fs",
             cookies=auth_headers
         )
@@ -298,7 +294,7 @@ class TestAuditLogFiltering:
     @pytest.mark.asyncio
     async def test_filtered_audit_logs_with_pagination(self, client, auth_headers):
         """Test pagination of filtered audit logs."""
-        response = client.get(
+        response = await client.get(
             "/admin/api/audit/filtered?limit=10&offset=0",
             cookies=auth_headers
         )
@@ -315,7 +311,7 @@ class TestAuditLogExport:
     @pytest.mark.asyncio
     async def test_export_audit_logs_json(self, client, auth_headers):
         """Test exporting audit logs as JSON."""
-        response = client.get(
+        response = await client.get(
             "/admin/api/audit/export?format=json",
             cookies=auth_headers
         )
@@ -331,7 +327,7 @@ class TestAuditLogExport:
     @pytest.mark.asyncio
     async def test_export_audit_logs_csv(self, client, auth_headers):
         """Test exporting audit logs as CSV."""
-        response = client.get(
+        response = await client.get(
             "/admin/api/audit/export?format=csv",
             cookies=auth_headers
         )
@@ -344,13 +340,13 @@ class TestAuditLogExport:
     @pytest.mark.asyncio
     async def test_export_audit_logs_requires_auth(self, client):
         """Test that export requires authentication."""
-        response = client.get("/admin/api/audit/export?format=json")
+        response = await client.get("/admin/api/audit/export?format=json")
         assert response.status_code == 401
 
     @pytest.mark.asyncio
     async def test_export_with_filters(self, client, auth_headers):
         """Test exporting with filters applied."""
-        response = client.get(
+        response = await client.get(
             "/admin/api/audit/export?format=json&status=success",
             cookies=auth_headers
         )
@@ -369,7 +365,7 @@ class TestDashboardStatsEndpoint:
     @pytest.mark.asyncio
     async def test_get_dashboard_stats(self, client, auth_headers):
         """Test getting dashboard stats."""
-        response = client.get("/admin/api/stats", cookies=auth_headers)
+        response = await client.get("/admin/api/stats", cookies=auth_headers)
 
         assert response.status_code == 200
         data = response.json()
@@ -386,7 +382,7 @@ class TestDashboardStatsEndpoint:
     @pytest.mark.asyncio
     async def test_dashboard_stats_requires_auth(self, client):
         """Test that dashboard stats requires authentication."""
-        response = client.get("/admin/api/stats")
+        response = await client.get("/admin/api/stats")
         assert response.status_code == 401
 
 
@@ -396,7 +392,7 @@ class TestContainerEndpoints:
     @pytest.mark.asyncio
     async def test_list_containers(self, client, auth_headers):
         """Test listing containers."""
-        response = client.get("/admin/api/containers", cookies=auth_headers)
+        response = await client.get("/admin/api/containers", cookies=auth_headers)
 
         # This may fail if Docker is not available, so we just check the endpoint exists
         assert response.status_code in [200, 503]
@@ -404,7 +400,7 @@ class TestContainerEndpoints:
     @pytest.mark.asyncio
     async def test_list_containers_requires_auth(self, client):
         """Test that listing containers requires authentication."""
-        response = client.get("/admin/api/containers")
+        response = await client.get("/admin/api/containers")
         assert response.status_code == 401
 
 
@@ -443,12 +439,13 @@ class TestWebSocketConnectionTracking:
         assert new_count >= 0
 
 
+@pytest.mark.asyncio
 class TestAuthenticationFlow:
     """Tests for the complete authentication flow."""
 
-    def test_login_with_valid_password(self, client):
+    async def test_login_with_valid_password(self, client):
         """Test login with valid password."""
-        response = client.post(
+        response = await client.post(
             "/admin/api/login",
             json={"password": "admin"}
         )
@@ -457,25 +454,25 @@ class TestAuthenticationFlow:
         data = response.json()
         assert "token" in data
 
-    def test_login_with_invalid_password(self, client):
+    async def test_login_with_invalid_password(self, client):
         """Test login with invalid password."""
-        response = client.post(
+        response = await client.post(
             "/admin/api/login",
             json={"password": "wrong_password"}
         )
 
         assert response.status_code == 401
 
-    def test_logout(self, client, auth_headers):
+    async def test_logout(self, client, auth_headers):
         """Test logout."""
-        response = client.post("/admin/api/logout", cookies=auth_headers)
+        response = await client.post("/admin/api/logout", cookies=auth_headers)
         assert response.status_code == 200
 
-    def test_access_protected_endpoint_after_logout(self, client, auth_headers):
+    async def test_access_protected_endpoint_after_logout(self, client, auth_headers):
         """Test that protected endpoints are inaccessible after logout."""
         # Logout
-        client.post("/admin/api/logout", cookies=auth_headers)
+        await client.post("/admin/api/logout", cookies=auth_headers)
 
         # Try to access protected endpoint
-        response = client.get("/admin/api/health", cookies=auth_headers)
+        response = await client.get("/admin/api/health", cookies=auth_headers)
         assert response.status_code == 401

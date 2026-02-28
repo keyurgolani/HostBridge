@@ -50,6 +50,9 @@ Built-in admin dashboard provides human oversight, HITL (Human-in-the-Loop) appr
 - **Knowledge Graph Memory:** 12 tools for persistent knowledge storage with FTS5 search and graph traversal
 - **Plan Execution:** DAG-based multi-step workflows with concurrent execution, task references, and failure handling
 - **WebSocket Support:** Real-time notifications
+- **Operational Documentation:** Docker Hub publishing guide, LLM system prompt template, and auto-generated tool catalog
+- **Deployment Examples:** Production compose file, policy-oriented config variants, and secrets template
+- **Expanded Test Suites:** Unit, integration, security, and load-test coverage
 
 ### ✅ Admin Dashboard Enhancements (Complete)
 
@@ -227,7 +230,7 @@ curl -X POST http://localhost:8080/api/tools/http/request \
   }'
 
 # List loaded secret key names (no values)
-curl -X POST http://localhost:8080/api/tools/workspace/secrets_list
+curl -X POST http://localhost:8080/api/tools/workspace/secrets/list
 ```
 
 ### HTTP Configuration (`config.yaml`)
@@ -484,10 +487,14 @@ http://localhost:8080/admin/
 │   │   ├── components/    # UI components
 │   │   └── lib/           # API & WebSocket clients
 │   └── dist/              # Built static files
-├── development/           # Documentation & tests
-│   ├── spec.md           # Design document
-│   ├── test_slice3.sh    # Test script
-│   └── *.md              # Reports & guides
+├── docs/                  # Supplemental operational docs
+│   ├── DOCKER_HUB_PUBLISHING.md
+│   ├── LLM_SYSTEM_PROMPT.md
+│   └── TOOL_CATALOG.md
+├── examples/              # Config and deployment templates
+├── scripts/               # Utility scripts (for docs generation, etc.)
+├── tests/                 # Unit, integration, security, and load tests
+├── development/           # Additional specs and planning notes
 ├── docker-compose.yaml    # Docker config
 └── Dockerfile            # Container image
 ```
@@ -508,6 +515,11 @@ pytest
 
 # Run specific test file
 pytest tests/test_mcp.py
+
+# Run integration/security/load suites
+pytest tests/test_integration.py -v
+pytest tests/test_security.py -v
+pytest tests/test_load.py -v
 
 # Run with coverage
 pytest --cov=src --cov-report=html
@@ -533,7 +545,12 @@ npm run dev
 
 - **Admin Dashboard Guide:** `admin/README.md` - Complete dashboard documentation
 - **Commands to Try:** `CommandsToTry.md` - Sample commands for LLM interaction
+- **Tool Catalog:** `docs/TOOL_CATALOG.md` - Auto-generated endpoint and MCP tool reference
+- **LLM Prompt Template:** `docs/LLM_SYSTEM_PROMPT.md` - Starter system prompt for HostBridge-connected assistants
+- **Docker Publishing Guide:** `docs/DOCKER_HUB_PUBLISHING.md` - Build/tag/publish workflow
+- **Deployment Examples:** `examples/` - `config.basic.yaml`, `config.development.yaml`, `config.restricted.yaml`, and production compose template
 - **API Documentation:** http://localhost:8080/docs - Interactive OpenAPI docs
+- **Regenerate Tool Catalog:** `python3 scripts/generate_tool_docs.py > docs/TOOL_CATALOG.md`
 
 ---
 
@@ -619,18 +636,6 @@ npm run dev
 - SQLite persistence for plan/task state
 - 53 tests passing
 
-### ✅ Plan Execution (Complete)
-
-- 5 tools: `plan_create`, `plan_execute`, `plan_status`, `plan_list`, `plan_cancel`
-- DAG validation with cycle detection via Kahn's algorithm
-- Concurrent execution via `asyncio.gather` for tasks at same dependency level
-- Task reference resolution: `{{task:TASK_ID.field}}` in parameters
-- Three failure policies: `stop`, `skip_dependents`, `continue`
-- Per-task `on_failure` override for fine-grained control
-- HITL integration: tasks with `require_hitl=True` block for human approval
-- Plan state persistence in SQLite across container restarts
-- 53 tests passing
-
 ### 📋 Upcoming Features
 - Additional tool categories as needed
 
@@ -697,20 +702,13 @@ Built following the design principles from:
 
 ## Testing
 
-The project includes comprehensive test coverage:
+The project includes comprehensive test coverage.
 
-- **366 tests** covering all functionality
-- **Unit tests** for individual components
-- **Integration tests** for API endpoints
-- **MCP protocol tests** for Streamable HTTP transport
-- **HITL workflow tests** for approval system
-- **Security tests** for workspace boundaries and SSRF protection
-- **Git tools tests** (27 unit tests, 12 integration tests)
-- **Docker tools tests** (20 unit tests, 7 integration tests)
-- **Secrets tests** (22 tests: loading, template resolution, masking)
-- **HTTP tools tests** (32 tests: SSRF detection, domain filtering, API integration)
-- **Memory tools tests** (46 tests: CRUD, FTS5 search, graph traversal)
-- **Plan tools tests** (53 tests: DAG validation, execution, failure handling, HITL)
-- **Admin dashboard tests** (35 tests: health, tools, config, audit, auth)
+As of this snapshot, `pytest --collect-only -q` reports **420 tests collected** across:
 
-All tests pass with zero warnings and clean exit.
+- Unit tests for core modules and tool implementations
+- API and admin endpoint integration tests
+- MCP protocol and HITL workflow tests
+- Security regression tests (path traversal, SSRF, auth enforcement, input handling)
+- Load/concurrency tests for frequent file and API operations
+- Feature-specific suites for Git, Docker, memory graph, plan execution, secrets, and HTTP

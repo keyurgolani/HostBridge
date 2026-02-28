@@ -1,0 +1,58 @@
+# Basic Configuration Example
+# A simple configuration for getting started with HostBridge
+
+# Workspace settings
+workspace:
+  base_dir: /workspace
+
+# HTTP client configuration
+http:
+  block_private_ips: true
+  block_metadata_endpoints: true
+  allow_domains: []  # Empty = allow all non-blocked domains
+  block_domains: []  # No additional blocked domains
+  max_response_size_kb: 1024
+  default_timeout: 30
+  max_timeout: 120
+
+# Logging
+logging:
+  level: INFO
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+
+# Policy rules - default allow with HITL for dangerous operations
+policy:
+  default: allow
+  rules:
+    # File operations on sensitive files require HITL
+    - pattern: "fs:write:*:.conf"
+      action: hitl
+    - pattern: "fs:write:*:.env"
+      action: hitl
+    - pattern: "fs:write:*:.yaml"
+      action: hitl
+
+    # Git write operations require HITL
+    - pattern: "git:commit:*"
+      action: hitl
+    - pattern: "git:push:*"
+      action: hitl
+    - pattern: "git:checkout:*"
+      action: hitl
+
+    # Docker control operations require HITL
+    - pattern: "docker:action:*"
+      action: hitl
+
+    # Memory deletion requires HITL
+    - pattern: "memory:delete:*"
+      action: hitl
+
+# HITL settings
+hitl:
+  ttl_seconds: 300
+  max_pending: 100
+
+# Audit settings
+audit:
+  retention_days: 30

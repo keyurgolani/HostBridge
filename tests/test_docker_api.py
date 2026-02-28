@@ -1,10 +1,31 @@
 """Integration tests for Docker API endpoints."""
 
+import os
+import tempfile
+
 import pytest
 from httpx import AsyncClient, ASGITransport
 from unittest.mock import AsyncMock, MagicMock, patch
 
+# Set safe defaults before importing src.main (which initializes global services)
+TEST_WORKSPACE = tempfile.mkdtemp()
+TEST_DATA_DIR = tempfile.mkdtemp()
+os.environ.setdefault("WORKSPACE_BASE_DIR", TEST_WORKSPACE)
+os.environ.setdefault("DB_PATH", os.path.join(TEST_DATA_DIR, "hostbridge.db"))
+
 from src.main import app
+
+
+@pytest.fixture(autouse=True)
+async def connected_db():
+    """Ensure app database is connected for each test."""
+    from src.main import db
+
+    await db.connect()
+    try:
+        yield
+    finally:
+        await db.close()
 
 
 @pytest.fixture
@@ -34,7 +55,10 @@ async def test_docker_list_endpoint(mock_docker_tools):
         total_count=1,
     ))
     
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+    async with AsyncClient(
+        transport=ASGITransport(app=app, raise_app_exceptions=False),
+        base_url="http://test",
+    ) as client:
         response = await client.post(
             "/api/tools/docker/list",
             json={"all": True}
@@ -64,7 +88,10 @@ async def test_docker_inspect_endpoint(mock_docker_tools):
         state={"status": "running", "running": True},
     ))
     
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+    async with AsyncClient(
+        transport=ASGITransport(app=app, raise_app_exceptions=False),
+        base_url="http://test",
+    ) as client:
         response = await client.post(
             "/api/tools/docker/inspect",
             json={"container": "test-container"}
@@ -86,7 +113,10 @@ async def test_docker_logs_endpoint(mock_docker_tools):
         line_count=2,
     ))
     
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+    async with AsyncClient(
+        transport=ASGITransport(app=app, raise_app_exceptions=False),
+        base_url="http://test",
+    ) as client:
         response = await client.post(
             "/api/tools/docker/logs",
             json={"container": "test-container", "tail": 100}
@@ -106,7 +136,7 @@ async def test_docker_action_endpoint_requires_hitl(mock_docker_tools):
     
     # Mock HITL manager to auto-approve
     with patch('src.main.hitl_manager') as mock_hitl:
-        mock_hitl.create_request = AsyncMock()
+        mock_hitl.create_request = AsyncMock(return_value=MagicMock(id="hitl-test-id"))
         mock_hitl.wait_for_decision = AsyncMock(return_value=("approved", None))
         
         mock_docker_tools.container_action = AsyncMock(return_value=DockerActionResponse(
@@ -118,7 +148,10 @@ async def test_docker_action_endpoint_requires_hitl(mock_docker_tools):
             message="Successfully restarted container",
         ))
         
-        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        async with AsyncClient(
+            transport=ASGITransport(app=app, raise_app_exceptions=False),
+            base_url="http://test",
+        ) as client:
             response = await client.post(
                 "/api/tools/docker/action",
                 json={"container": "test-container", "action": "restart"}
@@ -142,7 +175,10 @@ async def test_docker_list_sub_app_endpoint(mock_docker_tools):
         total_count=0,
     ))
     
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+    async with AsyncClient(
+        transport=ASGITransport(app=app, raise_app_exceptions=False),
+        base_url="http://test",
+    ) as client:
         response = await client.post(
             "/tools/docker/list",
             json={"all": False}
@@ -160,7 +196,10 @@ async def test_docker_error_handling(mock_docker_tools):
         side_effect=RuntimeError("Docker daemon not running")
     )
     
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+    async with AsyncClient(
+        transport=ASGITransport(app=app, raise_app_exceptions=False),
+        base_url="http://test",
+    ) as client:
         response = await client.post(
             "/api/tools/docker/list",
             json={"all": True}
@@ -179,7 +218,10 @@ async def test_docker_container_not_found(mock_docker_tools):
         side_effect=ValueError("Container not found: nonexistent")
     )
     
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+    async with AsyncClient(
+        transport=ASGITransport(app=app, raise_app_exceptions=False),
+        base_url="http://test",
+    ) as client:
         response = await client.post(
             "/api/tools/docker/inspect",
             json={"container": "nonexistent"}

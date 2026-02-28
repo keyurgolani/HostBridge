@@ -1,0 +1,61 @@
+# Development Configuration Example
+# A relaxed configuration for local development and testing
+
+# Workspace settings
+workspace:
+  base_dir: /workspace
+
+# HTTP client configuration - relaxed for development
+http:
+  block_private_ips: false  # Allow local services during development
+  block_metadata_endpoints: true  # Still block cloud metadata
+  allow_domains: []  # Allow all domains
+  block_domains: []  # No blocked domains
+  max_response_size_kb: 2048  # Larger response size for debugging
+  default_timeout: 60  # Longer timeout for slow local services
+  max_timeout: 300
+
+# Logging - verbose for debugging
+logging:
+  level: DEBUG
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+
+# Policy rules - mostly allow for development
+policy:
+  default: allow  # Allow most operations
+  rules:
+    # Only HITL for truly dangerous operations
+    - pattern: "docker:action:stop:*"
+      action: hitl
+    - pattern: "docker:action:restart:*"
+      action: hitl
+    - pattern: "memory:delete:*"
+      action: hitl
+
+# HITL settings - longer TTL for development
+hitl:
+  ttl_seconds: 600
+  max_pending: 200
+
+# Audit settings - shorter retention for dev
+audit:
+  retention_days: 7
+
+# Tool-specific configurations
+tools:
+  shell:
+    allowlist:
+      - ls
+      - cat
+      - echo
+      - pwd
+      - grep
+      - find
+      - git
+      - python
+      - pip
+      - npm
+      - node
+      - docker
+      - curl
+      - jq

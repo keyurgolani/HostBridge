@@ -47,6 +47,20 @@ Before trying file operations, it's helpful to understand the workspace configur
 **"Reload the secrets file"**
 - Triggers the server to re-read `secrets.env` from disk (admin action)
 
+### Documentation and Configuration Workflows
+
+**"Read docs/TOOL_CATALOG.md and show me all Docker-related tools"**
+- Uses the generated catalog as a quick reference for endpoint and MCP names
+
+**"Generate a fresh tool catalog from the running OpenAPI schema"**
+- Runs: `python3 scripts/generate_tool_docs.py > docs/TOOL_CATALOG.md`
+
+**"Compare examples/config.basic.yaml and examples/config.restricted.yaml"**
+- Highlights policy and HTTP boundary differences between baseline and hardened setups
+
+**"Show me how to publish this image using docs/DOCKER_HUB_PUBLISHING.md"**
+- Walks through build, tag, and push commands for Docker Hub
+
 ## Filesystem Tools
 
 ### Reading Files
@@ -564,6 +578,17 @@ Certain operations require human approval through the admin dashboard. When trig
 **"Read a file from a different workspace directory"**
 - Tests workspace_dir parameter override (may require HITL approval)
 
+### Test Suite Workflows
+
+**"Run the integration test suite with pytest tests/test_integration.py -v"**
+- Exercises end-to-end API/admin flows in one pass
+
+**"Run the security regression suite with pytest tests/test_security.py -v"**
+- Validates SSRF, path traversal, auth, and input-handling protections
+
+**"Run the load/concurrency suite with pytest tests/test_load.py -v"**
+- Checks behavior under concurrent file/API activity
+
 ## Tips for LLM Interaction
 
 When working with an LLM that has access to these tools:
@@ -697,16 +722,11 @@ When using MCP clients (Claude Desktop, Cursor, etc.), tools are identified by t
 - `plan_status` - Get plan and task status
 - `plan_list` - List all plans
 - `plan_cancel` - Cancel a plan
-- `plan_create` - Create a DAG-based execution plan
-- `plan_execute` - Execute a plan synchronously
-- `plan_status` - Get plan and task status
-- `plan_list` - List all plans
-- `plan_cancel` - Cancel a plan
 
 ### OpenAPI Endpoints
 
 When using REST API directly:
-- `POST /health` - Health check
+- `GET /health` - Health check
 - `POST /api/tools/fs/read` - Read files
 - `POST /api/tools/fs/write` - Write files
 - `POST /api/tools/fs/list` - List directories
@@ -729,7 +749,7 @@ When using REST API directly:
 - `POST /api/tools/docker/logs` - Get Docker container logs
 - `POST /api/tools/docker/action` - Control Docker container lifecycle
 - `POST /api/tools/workspace/info` - Workspace information
-- `POST /api/tools/workspace/secrets_list` - List secret key names
+- `POST /api/tools/workspace/secrets/list` - List secret key names
 - `POST /api/tools/http/request` - Make outbound HTTP requests
 - `POST /api/tools/memory/store` - Store a knowledge node
 - `POST /api/tools/memory/get` - Retrieve a node with relations

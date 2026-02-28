@@ -1,0 +1,142 @@
+# Restricted/Security-Focused Configuration Example
+# A strict configuration for production or security-sensitive environments
+
+# Workspace settings
+workspace:
+  base_dir: /workspace
+
+# HTTP client configuration - strict settings
+http:
+  block_private_ips: true
+  block_metadata_endpoints: true
+  # Only allow specific domains
+  allow_domains:
+    - "api.github.com"
+    - "*.githubusercontent.com"
+    - "api.openai.com"
+    - "api.anthropic.com"
+  block_domains:
+    - "*.internal.*"
+    - "*.local"
+  max_response_size_kb: 512
+  default_timeout: 15
+  max_timeout: 60
+
+# Logging - verbose for security auditing
+logging:
+  level: DEBUG
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+
+# Policy rules - default HITL for most operations
+policy:
+  default: hitl  # Require approval by default
+  rules:
+    # Allow safe read operations
+    - pattern: "fs:read:*"
+      action: allow
+    - pattern: "fs:list:*"
+      action: allow
+    - pattern: "fs:search:*"
+      action: allow
+
+    # Allow safe git read operations
+    - pattern: "git:status:*"
+      action: allow
+    - pattern: "git:log:*"
+      action: allow
+    - pattern: "git:diff:*"
+      action: allow
+    - pattern: "git:show:*"
+      action: allow
+    - pattern: "git:list_branches:*"
+      action: allow
+    - pattern: "git:remote:*"
+      action: allow
+    - pattern: "git:stash:list"
+      action: allow
+
+    # Allow safe docker read operations
+    - pattern: "docker:list:*"
+      action: allow
+    - pattern: "docker:inspect:*"
+      action: allow
+    - pattern: "docker:logs:*"
+      action: allow
+
+    # Allow workspace info
+    - pattern: "workspace:info:*"
+      action: allow
+    - pattern: "workspace:secrets_list:*"
+      action: allow
+
+    # Allow memory read/search operations
+    - pattern: "memory:get:*"
+      action: allow
+    - pattern: "memory:search:*"
+      action: allow
+    - pattern: "memory:children:*"
+      action: allow
+    - pattern: "memory:ancestors:*"
+      action: allow
+    - pattern: "memory:roots:*"
+      action: allow
+    - pattern: "memory:related:*"
+      action: allow
+    - pattern: "memory:subtree:*"
+      action: allow
+    - pattern: "memory:stats:*"
+      action: allow
+
+    # Block all shell commands by default (require explicit approval)
+    - pattern: "shell:execute:*"
+      action: hitl
+
+    # Block HTTP requests to external services (require approval)
+    - pattern: "http:request:*"
+      action: hitl
+
+    # All write operations require HITL (default behavior)
+    - pattern: "fs:write:*"
+      action: hitl
+    - pattern: "git:commit:*"
+      action: hitl
+    - pattern: "git:push:*"
+      action: hitl
+    - pattern: "docker:action:*"
+      action: hitl
+    - pattern: "memory:store:*"
+      action: hitl
+    - pattern: "memory:update:*"
+      action: hitl
+    - pattern: "memory:delete:*"
+      action: hitl
+    - pattern: "memory:link:*"
+      action: hitl
+
+# HITL settings - shorter TTL for security
+hitl:
+  ttl_seconds: 180
+  max_pending: 50
+
+# Audit settings - longer retention
+audit:
+  retention_days: 90
+
+# Tool-specific configurations
+tools:
+  shell:
+    allowlist:
+      - ls
+      - cat
+      - head
+      - tail
+      - grep
+      - find
+      - wc
+      - sort
+      - uniq
+    block_patterns:
+      - "rm *"
+      - "sudo *"
+      - "chmod *"
+      - "chown *"

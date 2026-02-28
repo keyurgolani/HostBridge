@@ -17,6 +17,7 @@ from pydantic import BaseModel
 from src.config import Config
 from src.audit import AuditLogger
 from src.logging_config import get_logger
+from src.models import DockerListRequest, DockerLogsRequest
 
 logger = get_logger(__name__)
 
@@ -621,7 +622,7 @@ async def get_filtered_audit_logs(
 
 @router.get("/audit/export")
 async def export_audit_logs(
-    format: str = Query("json", regex="^(json|csv)$"),
+    format: str = Query("json", pattern="^(json|csv)$"),
     status: Optional[str] = Query(None),
     tool_category: Optional[str] = Query(None),
     start_time: Optional[str] = Query(None),
@@ -710,8 +711,14 @@ async def list_containers(session_token: str = Depends(require_auth)):
         raise HTTPException(status_code=503, detail="Docker tools not available")
 
     try:
-        result = await docker_tools.list(all=True)
+        result = await docker_tools.list_containers(DockerListRequest(all=True))
         return result
+    except RuntimeError as e:
+        error = str(e)
+        logger.error("failed_to_list_containers", error=error)
+        if "docker support not available" in error.lower() or "failed to connect to docker daemon" in error.lower():
+            raise HTTPException(status_code=503, detail=error)
+        raise HTTPException(status_code=500, detail=error)
     except Exception as e:
         logger.error("failed_to_list_containers", error=str(e))
         raise HTTPException(status_code=500, detail=str(e))
@@ -731,8 +738,18 @@ async def get_container_logs(
         raise HTTPException(status_code=503, detail="Docker tools not available")
 
     try:
-        result = await docker_tools.logs(container_id=container_id, tail=tail, follow=follow)
+        request = DockerLogsRequest(container=container_id, tail=tail, follow=follow)
+        result = await docker_tools.get_logs(request)
         return result
+    except ValueError as e:
+        logger.warning("container_logs_not_found", container_id=container_id, error=str(e))
+        raise HTTPException(status_code=404, detail=str(e))
+    except RuntimeError as e:
+        error = str(e)
+        logger.error("failed_to_get_container_logs", container_id=container_id, error=error)
+        if "docker support not available" in error.lower() or "failed to connect to docker daemon" in error.lower():
+            raise HTTPException(status_code=503, detail=error)
+        raise HTTPException(status_code=500, detail=error)
     except Exception as e:
         logger.error("failed_to_get_container_logs", container_id=container_id, error=str(e))
         raise HTTPException(status_code=500, detail=str(e))

@@ -5,9 +5,27 @@ import pytest
 import tempfile
 import shutil
 import subprocess
-from httpx import AsyncClient
+from httpx import AsyncClient, ASGITransport
+
+# Set safe defaults before importing src.main (which initializes global services)
+TEST_WORKSPACE = tempfile.mkdtemp()
+TEST_DATA_DIR = tempfile.mkdtemp()
+os.environ.setdefault("WORKSPACE_BASE_DIR", TEST_WORKSPACE)
+os.environ.setdefault("DB_PATH", os.path.join(TEST_DATA_DIR, "hostbridge.db"))
 
 from src.main import app
+
+
+@pytest.fixture(autouse=True)
+async def connected_db():
+    """Ensure app database is connected for each test."""
+    from src.main import db
+
+    await db.connect()
+    try:
+        yield
+    finally:
+        await db.close()
 
 
 @pytest.fixture
@@ -47,12 +65,17 @@ def setup_workspace(temp_workspace, monkeypatch):
     # Reload config
     from src import config as config_module
     config_module.config = config_module.load_config()
+    from src import main as main_module
+
+    # Keep global app services aligned with test workspace.
+    main_module.config.workspace.base_dir = temp_workspace
+    main_module.workspace_manager.base_dir = os.path.realpath(temp_workspace)
 
 
 @pytest.mark.asyncio
 async def test_git_status_endpoint(git_repo, setup_workspace):
     """Test git status API endpoint."""
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.post(
             "/api/tools/git/status",
             json={"repo_path": git_repo},
@@ -70,7 +93,7 @@ async def test_git_status_endpoint(git_repo, setup_workspace):
 @pytest.mark.asyncio
 async def test_git_log_endpoint(git_repo, setup_workspace):
     """Test git log API endpoint."""
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.post(
             "/api/tools/git/log",
             json={"repo_path": git_repo, "max_count": 10},
@@ -86,7 +109,7 @@ async def test_git_log_endpoint(git_repo, setup_workspace):
 @pytest.mark.asyncio
 async def test_git_diff_endpoint(git_repo, setup_workspace):
     """Test git diff API endpoint."""
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.post(
             "/api/tools/git/diff",
             json={"repo_path": git_repo},
@@ -103,7 +126,7 @@ async def test_git_diff_endpoint(git_repo, setup_workspace):
 @pytest.mark.asyncio
 async def test_git_list_branches_endpoint(git_repo, setup_workspace):
     """Test git list branches API endpoint."""
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.post(
             "/api/tools/git/list_branches",
             json={"repo_path": git_repo},
@@ -118,7 +141,7 @@ async def test_git_list_branches_endpoint(git_repo, setup_workspace):
 @pytest.mark.asyncio
 async def test_git_show_endpoint(git_repo, setup_workspace):
     """Test git show API endpoint."""
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.post(
             "/api/tools/git/show",
             json={"repo_path": git_repo, "ref": "HEAD"},
@@ -135,7 +158,7 @@ async def test_git_show_endpoint(git_repo, setup_workspace):
 @pytest.mark.asyncio
 async def test_git_remote_list_endpoint(git_repo, setup_workspace):
     """Test git remote list API endpoint."""
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.post(
             "/api/tools/git/remote",
             json={"repo_path": git_repo, "action": "list"},
@@ -150,7 +173,7 @@ async def test_git_remote_list_endpoint(git_repo, setup_workspace):
 @pytest.mark.asyncio
 async def test_git_stash_list_endpoint(git_repo, setup_workspace):
     """Test git stash list API endpoint."""
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.post(
             "/api/tools/git/stash",
             json={"repo_path": git_repo, "action": "list"},
@@ -165,7 +188,7 @@ async def test_git_stash_list_endpoint(git_repo, setup_workspace):
 @pytest.mark.asyncio
 async def test_git_status_sub_app_endpoint(git_repo, setup_workspace):
     """Test git status sub-app endpoint."""
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.post(
             "/tools/git/status",
             json={"repo_path": git_repo},
@@ -179,7 +202,7 @@ async def test_git_status_sub_app_endpoint(git_repo, setup_workspace):
 @pytest.mark.asyncio
 async def test_git_log_sub_app_endpoint(git_repo, setup_workspace):
     """Test git log sub-app endpoint."""
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.post(
             "/tools/git/log",
             json={"repo_path": git_repo, "max_count": 5},
@@ -193,7 +216,7 @@ async def test_git_log_sub_app_endpoint(git_repo, setup_workspace):
 @pytest.mark.asyncio
 async def test_git_invalid_repo(setup_workspace):
     """Test git status with invalid repository."""
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.post(
             "/api/tools/git/status",
             json={"repo_path": "nonexistent_repo"},
@@ -205,7 +228,7 @@ async def test_git_invalid_repo(setup_workspace):
 @pytest.mark.asyncio
 async def test_git_openapi_spec():
     """Test that git tools appear in OpenAPI spec."""
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.get("/openapi.json")
     
     assert response.status_code == 200

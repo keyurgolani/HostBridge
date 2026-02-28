@@ -1,0 +1,75 @@
+# Production Docker Compose Example
+# A complete setup for production deployment
+
+services:
+  hostbridge:
+    image: yourusername/hostbridge:latest
+    container_name: hostbridge
+    restart: unless-stopped
+
+    ports:
+      - "8080:8080"
+
+    environment:
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:?ADMIN_PASSWORD is required}
+      - WORKSPACE_BASE_DIR=/workspace
+      - LOG_LEVEL=INFO
+      - AUDIT_RETENTION_DAYS=90
+      - HITL_TTL_SECONDS=300
+
+    volumes:
+      # Workspace - where your projects live
+      - ./workspace:/workspace
+
+      # Persistent data storage
+      - ./data:/data
+
+      # Secrets (read-only for security)
+      - ./secrets.env:/secrets/secrets.env:ro
+
+      # Configuration
+      - ./config.yaml:/app/config.yaml:ro
+
+      # Docker socket (for Docker tools)
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+    security_opt:
+      - no-new-privileges:true
+
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+    # Logging configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+# Optional: Add a reverse proxy
+#  nginx:
+#    image: nginx:alpine
+#    container_name: hostbridge-proxy
+#    restart: unless-stopped
+#    ports:
+#      - "80:80"
+#      - "443:443"
+#    volumes:
+#      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+#      - ./certs:/etc/nginx/certs:ro
+#    depends_on:
+#      - hostbridge

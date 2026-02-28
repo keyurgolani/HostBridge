@@ -17,6 +17,7 @@ async def client():
     """Create test client."""
     # Set environment variables before importing
     os.environ["WORKSPACE_BASE_DIR"] = TEST_WORKSPACE
+    os.environ["DB_PATH"] = os.path.join(TEST_DATA_DIR, "hostbridge.db")
     
     # Patch config loading
     import src.config
@@ -29,24 +30,20 @@ async def client():
     
     src.config.load_config = patched_load
     
-    # Patch the database path to use temp directory
-    import src.database
-    original_db_init = src.database.Database.__init__
-    
-    def patched_db_init(self, db_path=None):
-        if db_path is None:
-            db_path = os.path.join(TEST_DATA_DIR, "hostbridge.db")
-        original_db_init(self, db_path)
-    
-    src.database.Database.__init__ = patched_db_init
-    
     # Now import the app and initialize database
     from src.main import app, db
     
     # Connect to database before tests
     await db.connect()
     
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+    from src import main as main_module
+    main_module.config.workspace.base_dir = TEST_WORKSPACE
+    main_module.workspace_manager.base_dir = os.path.realpath(TEST_WORKSPACE)
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app, raise_app_exceptions=False),
+        base_url="http://test",
+    ) as ac:
         yield ac
     
     # Cleanup
@@ -54,7 +51,6 @@ async def client():
     
     # Restore originals
     src.config.load_config = original_load
-    src.database.Database.__init__ = original_db_init
 
 
 @pytest.fixture

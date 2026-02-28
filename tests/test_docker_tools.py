@@ -4,7 +4,7 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from datetime import datetime
 
-from src.tools.docker_tools import DockerTools
+from src.tools.docker_tools import DockerTools, DOCKER_AVAILABLE
 from src.models import (
     DockerListRequest,
     DockerInspectRequest,
@@ -207,6 +207,7 @@ class TestDockerInspect:
         assert response.mounts[0]["source"] == "/host/path"
     
     @pytest.mark.asyncio
+    @pytest.mark.skipif(not DOCKER_AVAILABLE, reason="aiodocker not installed")
     async def test_inspect_container_not_found(self, docker_tools, mock_docker):
         """Test inspecting non-existent container."""
         import aiodocker.exceptions
@@ -267,6 +268,7 @@ class TestDockerLogs:
         assert call_kwargs["tail"] == 50
     
     @pytest.mark.asyncio
+    @pytest.mark.skipif(not DOCKER_AVAILABLE, reason="aiodocker not installed")
     async def test_get_logs_container_not_found(self, docker_tools, mock_docker):
         """Test getting logs from non-existent container."""
         import aiodocker.exceptions
@@ -387,6 +389,7 @@ class TestDockerAction:
                 await docker_tools.container_action(request)
     
     @pytest.mark.asyncio
+    @pytest.mark.skipif(not DOCKER_AVAILABLE, reason="aiodocker not installed")
     async def test_action_container_not_found(self, docker_tools, mock_docker):
         """Test action on non-existent container."""
         import aiodocker.exceptions
@@ -415,6 +418,7 @@ class TestDockerConnection:
                 await tools._get_docker()
     
     @pytest.mark.asyncio
+    @pytest.mark.skipif(not DOCKER_AVAILABLE, reason="aiodocker not installed")
     async def test_docker_connection_error(self, docker_tools):
         """Test Docker connection failure."""
         with patch('src.tools.docker_tools.aiodocker.Docker') as mock_docker_class:
