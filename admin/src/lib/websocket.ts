@@ -1,0 +1,113 @@
+import { HITLRequest } from './api'
+
+type WebSocketMessage = 
+  | { type: 'hitl_request'; data: HITLRequest }
+  | { type: 'hitl_update'; data: HITLRequest }
+  | { type: 'pending_requests'; data: HITLRequest[] }
+  | { type: 'decision_accepted'; data: { id: string; decision: string } }
+  | { type: 'error'; data: { message: string } }
+
+type MessageHandler = (message: WebSocketMessage) => void
+
+export class WebSocketClient {
+  private ws: WebSocket | null = null
+  private handlers: Set<MessageHandler> = new Set()
+  private reconnectTimeout: number | null = null
+  private reconnectDelay = 1000
+  private maxReconnectDelay = 30000
+  private isConnecting = false
+
+  connect() {
+    // Prevent multiple simultaneous connections
+    if (this.ws?.readyState === WebSocket.OPEN || this.isConnecting) {
+      console.log('WebSocket already connected or connecting')
+      return
+    }
+    
+    this.isConnecting = true
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    const host = window.location.host
+    const wsUrl = `${protocol}//${host}/ws/hitl`
+    
+    this.ws = new WebSocket(wsUrl)
+    
+    this.ws.onopen = () => {
+      console.log('WebSocket connected')
+      this.reconnectDelay = 1000
+      this.isConnecting = false
+    }
+    
+    this.ws.onmessage = (event) => {
+      try {
+        const message = JSON.parse(event.data) as WebSocketMessage
+        this.handlers.forEach(handler => handler(message))
+      } catch (error) {
+        console.error('Failed to parse WebSocket message:', error)
+      }
+    }
+    
+    this.ws.onerror = (error) => {
+      console.error('WebSocket error:', error)
+      this.isConnecting = false
+    }
+    
+    this.ws.onclose = () => {
+      console.log('WebSocket disconnected')
+      this.isConnecting = false
+      this.scheduleReconnect()
+    }
+  }
+
+  private scheduleReconnect() {
+    if (this.reconnectTimeout) {
+      return
+    }
+    
+    this.reconnectTimeout = window.setTimeout(() => {
+      this.reconnectTimeout = null
+      this.connect()
+      this.reconnectDelay = Math.min(this.reconnectDelay * 2, this.maxReconnectDelay)
+    }, this.reconnectDelay)
+  }
+
+  disconnect() {
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout)
+      this.reconnectTimeout = null
+    }
+    
+    if (this.ws) {
+      this.ws.close()
+      this.ws = null
+    }
+  }
+
+  send(message: any) {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify(message))
+    } else {
+      console.error('WebSocket is not connected')
+    }
+  }
+
+  onMessage(handler: MessageHandler) {
+    this.handlers.add(handler)
+    return () => this.handlers.delete(handler)
+  }
+
+  approveRequest(id: string, note?: string) {
+    this.send({
+      type: 'hitl_decision',
+      data: { id, decision: 'approve', note },
+    })
+  }
+
+  rejectRequest(id: string, note?: string) {
+    this.send({
+      type: 'hitl_decision',
+      data: { id, decision: 'reject', note },
+    })
+  }
+}
+
+export const wsClient = new WebSocketClient()

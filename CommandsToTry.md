@@ -2,6 +2,19 @@
 
 This document provides sample requests you can give to an LLM that has access to the HostBridge tool server. These commands demonstrate the capabilities of each tool currently available.
 
+## Admin Dashboard
+
+Before trying commands, you can monitor and approve operations through the admin dashboard:
+
+**Access:** http://localhost:8080/admin/  
+**Default Password:** `admin`
+
+The dashboard provides:
+- Real-time HITL approval queue
+- Complete audit log with search/filter
+- System health monitoring
+- Premium UI with 3D animations
+
 ## Protocol Support
 
 HostBridge supports two protocols:
@@ -78,16 +91,20 @@ Before trying file operations, it's helpful to understand the workspace configur
 
 ### HITL (Human-in-the-Loop) Scenarios
 
-Depending on your policy configuration, certain operations may require human approval:
+Certain operations require human approval through the admin dashboard. When triggered, these requests appear in real-time at http://localhost:8080/admin/hitl:
 
 **"Overwrite the file test.conf with new configuration"**
-- Writing to .conf files typically requires approval
+- Writing to .conf files requires approval
+- Request appears in dashboard with countdown timer
+- Admin can approve or reject with optional note
 
 **"Create a new .env file with environment variables"**
-- Writing to .env files typically requires approval
+- Writing to .env files requires approval
+- Dashboard shows request parameters for review
 
-**"Write to an existing file with mode 'overwrite'"**
-- Overwriting existing files may require approval depending on policy
+**"Write to production.yaml with updated settings"**
+- Writing to .yaml files requires approval
+- Real-time WebSocket notification with sound alert
 
 ## Advanced Usage Patterns
 

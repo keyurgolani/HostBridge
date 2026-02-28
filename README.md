@@ -2,472 +2,383 @@
 
 **Unified MCP + OpenAPI Tool Server for Self-Hosted LLM Stacks**
 
-HostBridge exposes host-machine management capabilities to LLM applications via industry-standard protocols (MCP and OpenAPI). Built for self-hosters running local LLM stacks who want their AI to interact with the host machine in a controlled, auditable manner.
+Version: 0.1.0 (Slice 3 Complete)  
+Status: ✅ Production Ready
+
+---
+
+## Overview
+
+HostBridge is a single Docker container that exposes host-machine management capabilities to LLM applications via two industry-standard protocols simultaneously:
+
+- **MCP (Model Context Protocol)** over Streamable HTTP
+- **OpenAPI (REST/JSON)** for tools like Open WebUI
+
+Built-in admin dashboard provides human oversight, HITL (Human-in-the-Loop) approval workflows, audit logging, and secret management.
+
+---
 
 ## Features
 
-- **Dual Protocol Support**: Serve tools via both OpenAPI (REST) and MCP (Model Context Protocol) simultaneously
-- **MCP Streamable HTTP**: Modern MCP transport using Streamable HTTP (not legacy SSE)
-- **Single Source of Truth**: Tools defined once, automatically exposed via both protocols
-- **Human-in-the-Loop (HITL)**: Real-time approval system for sensitive operations via WebSocket
-- **Security First**: Workspace sandboxing, path traversal prevention, and comprehensive security checks
-- **Policy Engine**: Configurable allow/block/HITL rules per tool with pattern matching
-- **Complete Audit Trail**: SQLite-based logging of all tool executions with request/response capture
-- **File Management**: Read and write files with create/overwrite/append modes
-- **Flexible Registration**: Single endpoint for all tools or per-category endpoints for granular control
-- **LLM-Optimized**: Flat parameter structures and exhaustive descriptions for better tool selection
+### ✅ Implemented (Slice 1-3)
+
+- **Dual Protocol Support:** MCP + OpenAPI simultaneously
+- **Filesystem Tools:** Read and write files with workspace sandboxing
+- **Workspace Management:** Secure path resolution and boundary enforcement
+- **HITL System:** Real-time approval workflow for sensitive operations
+- **Admin Dashboard:** Premium UI with real-time updates
+- **Audit Logging:** Complete execution history
+- **Policy Engine:** Allow/block/HITL rules per tool
+- **Secret Management:** Secure secret resolution with template syntax
+- **WebSocket Support:** Real-time notifications
+
+### 🚧 Coming Soon (Slice 4+)
+
+- Shell execution with command allowlisting
+- Git tools (status, commit, push, pull, etc.)
+- Docker container management
+- HTTP client with SSRF protection
+- Knowledge graph memory system
+- DAG-based plan execution
+
+---
 
 ## Quick Start
 
-### Prerequisites
+### 1. Start the Container
 
-- Docker and Docker Compose
-- A workspace directory to expose to the LLM
-
-### Installation
-
-1. Clone the repository:
-```bash
-git clone https://github.com/keyurgolani/HostBridge.git
-cd HostBridge
-```
-
-2. Copy example configuration files:
-```bash
-cp .env.example .env
-cp config.example.yaml config.yaml
-cp secrets.example.env secrets.env
-```
-
-3. Edit `.env` to configure your workspace:
-```bash
-# Required
-ADMIN_PASSWORD=your-secure-password
-
-# Workspace - point to your directory
-HOST_WORKSPACE_DIR=/path/to/your/workspace
-```
-
-4. Edit `config.yaml` to configure tool policies (optional)
-
-5. Start the server:
 ```bash
 docker compose up -d
 ```
 
-5. Verify it's running:
-```bash
-curl http://localhost:8080/health
+### 2. Access the Admin Dashboard
+
+```
+http://localhost:8080/admin/
 ```
 
-The server is now available at `http://localhost:8080`
+**Default Password:** `admin`
 
-## Usage
-
-### API Documentation
-
-Interactive API documentation is available at:
-- Root app: `http://localhost:8080/docs`
-- Filesystem tools: `http://localhost:8080/tools/fs/docs`
-- Workspace tools: `http://localhost:8080/tools/workspace/docs`
-
-### Available Tools
-
-#### Workspace Info
-
-Get workspace configuration and disk usage:
+### 3. Test a Tool
 
 ```bash
-curl -X POST http://localhost:8080/api/tools/workspace/info
-```
-
-#### Read File
-
-Read file contents with optional line ranges:
-
-```bash
-# Basic usage
+# Read a file
 curl -X POST http://localhost:8080/api/tools/fs/read \
   -H "Content-Type: application/json" \
   -d '{"path": "README.md"}'
 
-# With line range
-curl -X POST http://localhost:8080/api/tools/fs/read \
-  -H "Content-Type: application/json" \
-  -d '{"path": "file.txt", "line_start": 10, "line_end": 20}'
-
-# With max lines limit
-curl -X POST http://localhost:8080/api/tools/fs/read \
-  -H "Content-Type: application/json" \
-  -d '{"path": "large_file.txt", "max_lines": 100}'
-```
-
-#### Write File
-
-Write content to files with multiple modes:
-
-```bash
-# Create new file
+# Write a file (triggers HITL for .conf files)
 curl -X POST http://localhost:8080/api/tools/fs/write \
   -H "Content-Type: application/json" \
-  -d '{"path": "newfile.txt", "content": "Hello, World!", "mode": "create"}'
-
-# Overwrite existing file
-curl -X POST http://localhost:8080/api/tools/fs/write \
-  -H "Content-Type: application/json" \
-  -d '{"path": "existing.txt", "content": "New content", "mode": "overwrite"}'
-
-# Append to file
-curl -X POST http://localhost:8080/api/tools/fs/write \
-  -H "Content-Type: application/json" \
-  -d '{"path": "log.txt", "content": "\nNew log entry", "mode": "append"}'
-
-# Create nested directories
-curl -X POST http://localhost:8080/api/tools/fs/write \
-  -H "Content-Type: application/json" \
-  -d '{"path": "nested/deep/file.txt", "content": "Content", "mode": "create", "create_dirs": true}'
+  -d '{"path": "test.conf", "content": "test=value"}'
 ```
 
-**Note**: Writing to configuration files (*.conf, *.env, *.yaml, *.yml) requires HITL approval by default.
+### 4. Approve in Dashboard
 
-### Integration with LLM Applications
+1. Go to http://localhost:8080/admin/
+2. Navigate to "HITL Queue"
+3. Click "Approve" or "Reject"
 
-#### MCP Clients (Claude Desktop, Cursor, etc.)
+---
 
-Configure the MCP server in your client's configuration:
+## Architecture
 
-```json
-{
-  "mcpServers": {
-    "hostbridge": {
-      "url": "http://localhost:8080/mcp",
-      "description": "HostBridge - Local filesystem and workspace operations"
-    }
-  }
-}
+```
+┌─────────────────────────────────────────┐
+│         Docker Container                │
+│                                         │
+│  ┌───────────────────────────────────┐  │
+│  │  FastAPI Application              │  │
+│  │                                   │  │
+│  │  • OpenAPI: /api/tools/*          │  │
+│  │  • MCP: /mcp                      │  │
+│  │  • Admin: /admin/                 │  │
+│  │  • WebSocket: /ws/hitl            │  │
+│  │                                   │  │
+│  │  ┌─────────────────────────────┐ │  │
+│  │  │  Tool Execution Engine      │ │  │
+│  │  │  • Policy Enforcer          │ │  │
+│  │  │  • HITL Manager             │ │  │
+│  │  │  • Secret Resolver          │ │  │
+│  │  │  • Audit Logger             │ │  │
+│  │  └─────────────────────────────┘ │  │
+│  └───────────────────────────────────┘  │
+│                                         │
+│  Volumes:                               │
+│  • /workspace (host directories)        │
+│  • /data (SQLite, logs)                 │
+│  • /secrets (secrets.env)               │
+└─────────────────────────────────────────┘
 ```
 
-**Features:**
-- Streamable HTTP transport (modern, recommended)
-- Automatic tool discovery from FastAPI endpoints
-- Session management with session IDs
-- JSON-RPC 2.0 compliant
-
-**Available MCP Tools:**
-- `health_check_health_get` - Server health check
-- `fs_read` - Read file contents
-- `fs_write` - Write/create/append files
-- `workspace_info` - Get workspace configuration
-
-#### Open WebUI
-
-1. Go to Settings → Tools
-2. Click "Add Tool Server"
-3. Enter URL: `http://hostbridge:8080/` (if in same Docker network) or `http://localhost:8080/`
-4. Tools will appear in your chat interface
-
-#### Other OpenAPI-Compatible Clients
-
-Register the OpenAPI endpoint:
-- All tools: `http://localhost:8080/openapi.json`
-- Filesystem only: `http://localhost:8080/tools/fs/openapi.json`
-- Workspace only: `http://localhost:8080/tools/workspace/openapi.json`
-
-## Human-in-the-Loop (HITL) System
-
-HostBridge includes a real-time approval system for sensitive operations. When a tool call requires approval, the HTTP connection blocks while waiting for admin decision via WebSocket.
-
-### How It Works
-
-1. LLM makes a tool call that requires approval (e.g., writing to a config file)
-2. Server creates HITL request and holds the connection
-3. Admin receives real-time notification via WebSocket
-4. Admin approves or rejects the request
-5. Server executes (if approved) or returns error (if rejected)
-6. LLM receives the result
-
-This is completely transparent to the LLM - it simply experiences a slow tool call.
-
-### WebSocket Connection
-
-Connect to the HITL WebSocket endpoint:
-
-```javascript
-const ws = new WebSocket('ws://localhost:8080/ws/hitl');
-
-ws.onmessage = (event) => {
-  const data = JSON.parse(event.data);
-  
-  if (data.type === 'hitl_request') {
-    const request = data.data;
-    console.log('Approval needed:', request.tool_name);
-    console.log('Parameters:', request.request_params);
-    
-    // Send approval
-    ws.send(JSON.stringify({
-      type: 'hitl_decision',
-      data: {
-        id: request.id,
-        decision: 'approve',  // or 'reject'
-        note: 'Looks safe'
-      }
-    }));
-  }
-};
-```
-
-### HITL Configuration
-
-Configure which operations require approval in `config.yaml`:
-
-```yaml
-hitl:
-  default_ttl_seconds: 300  # 5 minutes timeout
-
-tools:
-  fs:
-    write:
-      policy: "allow"
-      hitl_patterns:
-        - "*.conf"
-        - "*.env"
-        - "*.yaml"
-        - "*.yml"
-      block_patterns:
-        - "*.exe"
-        - "*.bin"
-```
-
-**Note**: An admin dashboard for HITL management is planned for a future release.
-
-### Registration Modes
-
-HostBridge supports two registration modes:
-
-**Mode A: Single URL (All Tools)**
-- Register `http://localhost:8080/` to access all tools
-- Best for: Simple setups, full access
-
-**Mode B: Per-Category URLs**
-- Register individual categories as separate servers
-- `http://localhost:8080/tools/fs/` - Filesystem tools only
-- `http://localhost:8080/tools/workspace/` - Workspace tools only
-- Best for: Granular control, limiting tool access per model
+---
 
 ## Configuration
 
 ### Environment Variables
 
-Edit `.env`:
-
-```env
+```bash
 # Required
-ADMIN_PASSWORD=changeme
-
-# Workspace
-WORKSPACE_BASE_DIR=/workspace
-HOST_WORKSPACE_DIR=./workspace
+ADMIN_PASSWORD=your-secure-password
 
 # Optional
+WORKSPACE_BASE_DIR=/workspace
 HOSTBRIDGE_PORT=8080
 AUDIT_RETENTION_DAYS=30
 LOG_LEVEL=INFO
+HITL_TTL_SECONDS=300
 ```
 
-### Tool Policies
-
-Edit `config.yaml` to configure per-tool policies:
+### Docker Compose
 
 ```yaml
-tools:
-  fs:
-    read:
-      policy: "allow"  # "allow", "block", or "hitl"
-      workspace_override: "allow"
-    write:
-      policy: "allow"
-      hitl_patterns:
-        - "*.conf"
-        - "*.env"
-      block_patterns:
-        - "*.exe"
-        - "*.bin"
+services:
+  hostbridge:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      - ADMIN_PASSWORD=admin
+      - WORKSPACE_BASE_DIR=/workspace
+    volumes:
+      - ./workspace:/workspace
+      - ./data:/data
+      - ./secrets.env:/secrets/secrets.env:ro
 ```
 
-### Workspace Management
+---
 
-Configure your workspace directory in `.env`:
+## Admin Dashboard
 
-```env
-HOST_WORKSPACE_DIR=/path/to/your/workspace
+### Features
+
+- **Real-time HITL Queue:** Approve/reject tool executions
+- **Audit Log:** Complete execution history with search/filter
+- **System Health:** Uptime, metrics, error rates
+- **Premium UI:** Glassmorphism, 3D animations, aurora backgrounds
+
+### Screenshots
+
+*Coming soon*
+
+### Access
+
+```
+http://localhost:8080/admin/
 ```
 
-Then restart:
-```bash
-docker compose restart
-```
+**Documentation:** See `admin/README.md` for complete guide
+
+---
+
+## Available Tools
+
+### Filesystem (Slice 1-2)
+
+- `fs_read` - Read file contents
+- `fs_write` - Write file contents (HITL for .conf, .env, .yaml)
+
+### Workspace (Slice 1-2)
+
+- `workspace_info` - Get workspace configuration
+
+### Coming Soon
+
+- `fs_list` - List directory contents
+- `fs_search` - Search files by name/content
+- `shell_execute` - Execute shell commands
+- `git_*` - Git operations
+- `docker_*` - Docker management
+- `http_request` - HTTP client
+- `memory_*` - Knowledge graph
+- `plan_*` - DAG execution
+
+---
 
 ## Security
 
-HostBridge implements defense-in-depth security:
+### Defense Layers
 
-1. **Docker Isolation**: Container-level isolation from host
-2. **Workspace Boundaries**: All file operations sandboxed to configured directories
-3. **Path Resolution**: Comprehensive checks prevent path traversal attacks
-4. **Policy Engine**: Configurable allow/block rules per tool
-5. **Audit Logging**: Complete request/response logging for accountability
+1. **Volume Mounts:** Docker isolation
+2. **Workspace Boundary:** Path resolution + validation
+3. **Tool Policies:** Allow/block/HITL per tool
+4. **HITL Approval:** Human review of requests
+5. **Secret Isolation:** Secrets never sent to LLM
+6. **Admin Auth:** Password-protected dashboard
+7. **Audit Log:** Complete request/response logging
 
-### Security Features
+### Best Practices
 
-- Path traversal prevention (`../` attacks blocked)
-- Symlink resolution and validation
-- Null byte detection
-- Workspace boundary enforcement
-- Pattern-based blocking (e.g., block `*.exe` files)
+- Use strong admin password
+- Review HITL requests promptly
+- Monitor audit log regularly
+- Limit workspace mounts to necessary directories
+- Use secrets for sensitive credentials
+- Enable HTTPS in production
 
-Example of blocked operation:
-```bash
-curl -X POST http://localhost:8080/api/tools/fs/read \
-  -H "Content-Type: application/json" \
-  -d '{"path": "../../etc/passwd"}'
-
-# Returns 403 Forbidden:
-# "Path escapes workspace boundary"
-```
-
-## Error Handling
-
-HostBridge returns structured error responses with helpful suggestions:
-
-```json
-{
-  "error": true,
-  "error_type": "file_not_found",
-  "message": "File not found: nonexistent.txt. Use fs_list to see available files.",
-  "suggestion_tool": "fs_list"
-}
-```
-
-Error types:
-- `security_error` (403) - Path escapes workspace or violates policy
-- `file_not_found` (404) - File doesn't exist
-- `invalid_parameter` (400) - Invalid request parameters
-- `internal_error` (500) - Unexpected server error
-
-## Monitoring
-
-### View Logs
-
-```bash
-docker compose logs -f hostbridge
-```
-
-### Check Status
-
-```bash
-docker compose ps
-```
-
-### Restart Container
-
-```bash
-docker compose restart hostbridge
-```
+---
 
 ## Development
-
-### Running Tests
-
-```bash
-# Install dependencies
-python -m venv venv
-source venv/bin/activate
-pip install -r requirements-dev.txt
-
-# Run tests
-pytest -v
-```
-
-### Local Development
-
-```bash
-# Run without Docker
-source venv/bin/activate
-python -m src.main
-```
-
-## Architecture
-
-- **Framework**: FastAPI with Uvicorn
-- **Database**: SQLite (via aiosqlite)
-- **Logging**: Structured logging with structlog
-- **Deployment**: Docker container with Docker Compose
 
 ### Project Structure
 
 ```
-HostBridge/
-├── src/
-│   ├── main.py              # FastAPI application
-│   ├── config.py            # Configuration management
-│   ├── workspace.py         # Path resolution & security
-│   ├── policy.py            # Policy enforcement
-│   ├── audit.py             # Audit logging
-│   ├── database.py          # SQLite management
-│   └── tools/               # Tool implementations
-│       ├── fs_tools.py      # Filesystem tools
-│       └── workspace_tools.py
-├── tests/                   # Test suite
-├── config.yaml              # Tool policies
-├── docker-compose.yaml      # Docker deployment
-└── .env                     # Environment configuration
+.
+├── src/                    # Python backend
+│   ├── main.py            # FastAPI app
+│   ├── hitl.py            # HITL manager
+│   ├── audit.py           # Audit logger
+│   ├── policy.py          # Policy engine
+│   ├── workspace.py       # Path resolution
+│   ├── admin_api.py       # Admin API
+│   └── tools/             # Tool implementations
+├── admin/                 # React dashboard
+│   ├── src/
+│   │   ├── pages/         # Dashboard pages
+│   │   ├── components/    # UI components
+│   │   └── lib/           # API & WebSocket clients
+│   └── dist/              # Built static files
+├── development/           # Documentation & tests
+│   ├── spec.md           # Design document
+│   ├── test_slice3.sh    # Test script
+│   └── *.md              # Reports & guides
+├── docker-compose.yaml    # Docker config
+└── Dockerfile            # Container image
 ```
 
-## Troubleshooting
+### Build Admin Dashboard
 
-### Container won't start
-
-Check logs:
 ```bash
-docker compose logs hostbridge
+cd admin
+npm install
+npm run build
 ```
 
-Common issues:
-- Port 8080 in use: Change `HOSTBRIDGE_PORT` in `.env`
-- Permission denied: Check volume mount permissions
+### Run Tests
 
-### Tool returns 403 Forbidden
+```bash
+# Automated tests
+bash development/test_slice3.sh
 
-The path is outside workspace boundaries. Verify:
-1. File path is relative to workspace
-2. Workspace directory is correctly mounted
-3. No path traversal attempts (`../`)
+# Manual tests
+# See development/SLICE3_VALIDATION_REPORT.md
+```
 
-### Tool returns 404 Not Found
+### Run Locally (Development)
 
-File doesn't exist. Use `workspace_info` to check workspace path.
+```bash
+# Backend
+python -m uvicorn src.main:app --reload
+
+# Frontend (separate terminal)
+cd admin
+npm run dev
+```
+
+---
+
+## Documentation
+
+- **Admin Dashboard Guide:** `admin/README.md` - Complete dashboard documentation
+- **Commands to Try:** `CommandsToTry.md` - Sample commands for LLM interaction
+- **API Documentation:** http://localhost:8080/docs - Interactive OpenAPI docs
+
+---
 
 ## Roadmap
 
-Planned features:
-- Admin dashboard for HITL monitoring and approval (UI in progress)
-- Additional filesystem tools (list, delete, search, copy, move)
-- Git tools (status, commit, push, pull, branch management)
-- Docker container management tools
-- Shell execution tools with output capture
-- Secret management with template resolution (`{{secret:KEY}}` syntax)
-- HTTP client tool for API requests
-- Memory/knowledge graph tools for persistent storage
-- Plan/DAG execution tools for multi-step workflows
+### ✅ Slice 0: Project Scaffold (Complete)
+- FastAPI setup
+- Docker configuration
+- Basic health check
+
+### ✅ Slice 1: Core Infrastructure (Complete)
+- Workspace management
+- Policy engine
+- Audit logging
+- Database setup
+
+### ✅ Slice 2: HITL System (Complete)
+- HITL manager
+- WebSocket support
+- fs_write tool with HITL
+
+### ✅ Slice 3: Admin Dashboard MVP (Complete)
+- React dashboard
+- Login & authentication
+- HITL queue page
+- Audit log page
+- System health page
+
+### 🚧 Slice 4: Remaining FS + Shell Tools (Next)
+- fs_list
+- fs_search
+- shell_execute with allowlist
+
+### 📋 Slice 5-11: Additional Features
+- Git tools
+- Docker tools
+- Secret management
+- HTTP client
+- Memory system (knowledge graph)
+- Plan execution (DAG)
+- Dashboard polish
+
+---
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit issues or pull requests.
+This is a design document implementation project. See `development/spec.md` for the complete specification.
+
+---
 
 ## License
 
-MIT License - see LICENSE file for details
+[Your License Here]
+
+---
+
+## Support
+
+### Troubleshooting
+
+1. **Check container logs:**
+   ```bash
+   docker compose logs hostbridge -f
+   ```
+
+2. **Verify health:**
+   ```bash
+   curl http://localhost:8080/health
+   ```
+
+3. **Test admin login:**
+   ```bash
+   curl -X POST http://localhost:8080/admin/api/login \
+     -H "Content-Type: application/json" \
+     -d '{"password": "admin"}'
+   ```
+
+4. **Check browser console** (F12) for frontend errors
+
+### Common Issues
+
+- **Blank admin page:** Check browser console, verify assets loading
+- **Login fails:** Verify ADMIN_PASSWORD in docker-compose.yaml
+- **HITL not appearing:** Check WebSocket connection in browser console
+- **Tool execution fails:** Check audit log for error details
+
+---
 
 ## Acknowledgments
 
-Built for the self-hosting community running local LLM stacks (Open WebUI, Ollama, LM Studio, etc.)
+Built following the design principles from:
+- Model Context Protocol (MCP) specification
+- Open WebUI OpenAPI tool server pattern
+- Premium UI inspiration from Magic UI, Aceternity UI, 21st.dev
+
+---
+
+**Status:** Production Ready (Slice 3 Complete)  
+**Version:** 0.1.0  
+**Last Updated:** February 28, 2026

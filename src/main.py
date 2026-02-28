@@ -6,7 +6,8 @@ from typing import Any, Dict
 
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi_mcp import FastApiMCP
 
 from src.config import load_config
@@ -49,6 +50,7 @@ async def lifespan(app: FastAPI):
     """Application lifespan manager."""
     # Startup
     logger.info("starting_hostbridge", version="0.1.0")
+    app.state.start_time = time.time()
     await db.connect()
     await hitl_manager.start()
     logger.info("hostbridge_started")
@@ -407,6 +409,34 @@ async def workspace_info_sub() -> WorkspaceInfoResponse:
 # Mount sub-apps
 app.mount("/tools/fs", fs_app)
 app.mount("/tools/workspace", workspace_app)
+
+# Include admin API
+from src.admin_api import router as admin_router
+app.include_router(admin_router)
+
+# Serve admin dashboard static files with SPA fallback
+import os
+from fastapi.responses import FileResponse
+
+static_dir = os.path.join(os.path.dirname(__file__), "..", "static", "admin")
+if os.path.exists(static_dir):
+    # Mount static assets
+    app.mount("/admin/assets", StaticFiles(directory=os.path.join(static_dir, "assets")), name="admin-assets")
+    
+    # Serve index.html for all admin routes (SPA fallback)
+    @app.get("/admin/{full_path:path}")
+    async def serve_admin(full_path: str):
+        """Serve admin dashboard with SPA fallback."""
+        # Try to serve the file if it exists
+        file_path = os.path.join(static_dir, full_path)
+        if os.path.isfile(file_path):
+            return FileResponse(file_path)
+        # Otherwise serve index.html (SPA fallback)
+        return FileResponse(os.path.join(static_dir, "index.html"))
+    
+    logger.info("admin_dashboard_mounted", path="/admin")
+else:
+    logger.warning("admin_dashboard_not_found", path=static_dir)
 
 
 if __name__ == "__main__":
