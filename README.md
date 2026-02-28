@@ -421,14 +421,15 @@ File doesn't exist. Use `workspace_info` to check workspace path.
 ## Roadmap
 
 Planned features:
-- Admin dashboard for HITL monitoring and approval
-- Additional filesystem tools (list, search)
-- Git tools (status, commit, push, pull)
+- Admin dashboard for HITL monitoring and approval (UI in progress)
+- Additional filesystem tools (list, delete, search, copy, move)
+- Git tools (status, commit, push, pull, branch management)
 - Docker container management tools
-- Secret management with template resolution
-- HTTP client tool
-- Memory/knowledge graph tools
-- Plan/DAG execution tools
+- Shell execution tools with output capture
+- Secret management with template resolution (`{{secret:KEY}}` syntax)
+- HTTP client tool for API requests
+- Memory/knowledge graph tools for persistent storage
+- Plan/DAG execution tools for multi-step workflows
 - MCP protocol support (currently OpenAPI only)
 
 ## Contributing
