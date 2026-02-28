@@ -20,13 +20,13 @@ export default function SystemHealthPage() {
   const isHealthy = errorRate < 0.1 && pendingHitl < 10
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 md:space-y-6">
       <motion.div
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
       >
-        <h1 className="text-4xl font-bold gradient-text mb-2">System Health</h1>
-        <p className="text-muted-foreground">
+        <h1 className="text-3xl md:text-4xl font-bold gradient-text mb-2">System Health</h1>
+        <p className="text-sm md:text-base text-muted-foreground">
           Monitor system performance and status
         </p>
       </motion.div>

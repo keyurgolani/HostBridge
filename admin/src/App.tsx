@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useAuthStore } from './store/authStore'
 import LoginPage from './pages/LoginPage'
 import DashboardLayout from './components/layout/DashboardLayout'
+import DashboardPage from './pages/DashboardPage'
 import HITLQueuePage from './pages/HITLQueuePage'
 import AuditLogPage from './pages/AuditLogPage'
 import SystemHealthPage from './pages/SystemHealthPage'
@@ -40,7 +41,7 @@ function App() {
               </ProtectedRoute>
             }
           >
-            <Route index element={<Navigate to="/hitl" replace />} />
+            <Route index element={<DashboardPage />} />
             <Route path="hitl" element={<HITLQueuePage />} />
             <Route path="audit" element={<AuditLogPage />} />
             <Route path="health" element={<SystemHealthPage />} />

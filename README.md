@@ -66,6 +66,13 @@ http://localhost:8080/admin/
 
 **Default Password:** `admin`
 
+The dashboard provides a unified view with expandable widgets:
+- HITL Approval Queue (approve/reject directly from dashboard)
+- System Health (real-time metrics and status)
+- Recent Activity (last 5 tool executions)
+
+Click widget headers to expand/collapse sections, or use "View All" buttons to navigate to dedicated pages for detailed analysis.
+
 ### 3. Test the Tools
 
 ```bash
@@ -108,8 +115,10 @@ curl -X POST http://localhost:8080/api/tools/fs/write \
 ### 4. Approve in Dashboard
 
 1. Go to http://localhost:8080/admin/
-2. Navigate to "HITL Queue"
-3. Click "Approve" or "Reject"
+2. Dashboard shows pending requests in HITL widget (yellow glow)
+3. Expand the widget to see requests
+4. Click "Approve" or "Reject" directly from dashboard
+5. Or click "View All" to navigate to full HITL Queue page
 
 ---
 
@@ -184,14 +193,31 @@ services:
 
 ### Features
 
-- **Real-time HITL Queue:** Approve/reject tool executions
-- **Audit Log:** Complete execution history with search/filter
-- **System Health:** Uptime, metrics, error rates
-- **Premium UI:** Glassmorphism, 3D animations, aurora backgrounds
-
-### Screenshots
-
-*Coming soon*
+- **Unified Dashboard:** Widget-based interface showing all critical information at a glance
+  - Expandable/collapsible sections for flexible monitoring
+  - Real-time updates via WebSocket
+  - Quick actions directly from dashboard widgets
+- **HITL Approval Queue Widget:** 
+  - Approve/reject tool executions without navigation
+  - Countdown timers and progress bars
+  - Real-time notifications with visual alerts
+- **System Health Widget:**
+  - Overall health status with color-coded indicators
+  - Key metrics: uptime, pending HITL, tools executed, error rate
+  - Quick access to detailed health page
+- **Recent Activity Widget:**
+  - Last 5 tool executions with status badges
+  - Quick stats: success, errors, blocked counts
+  - Link to full audit log with filtering
+- **Dedicated Pages:**
+  - Full HITL Queue management with detailed request information
+  - Complete Audit Log with search, filter, and export
+  - Detailed System Health with performance metrics
+- **Premium UI:** 
+  - Glassmorphism design with 3D animations
+  - Aurora backgrounds and floating particles
+  - Fully responsive (mobile, tablet, desktop)
+  - Real-time WebSocket updates
 
 ### Access
 
@@ -199,6 +225,8 @@ services:
 http://localhost:8080/admin/
 ```
 
+**Default Landing:** Unified dashboard with all widgets  
+**Navigation:** Sidebar menu for dedicated pages  
 **Documentation:** See `admin/README.md` for complete guide
 
 ---
@@ -360,11 +388,15 @@ npm run dev
 - Timeout and expiry handling
 
 ### ✅ Admin Dashboard (Complete)
-- React dashboard with premium UI
-- Login & authentication
-- HITL queue with real-time updates
-- Audit log with search/filter
-- System health monitoring
+- React dashboard with premium UI and glassmorphism design
+- Unified widget-based dashboard as default landing page
+- Expandable/collapsible widgets for flexible monitoring
+- HITL queue with real-time updates and direct approve/reject
+- Audit log with search/filter and status badges
+- System health monitoring with color-coded indicators
+- Fully responsive design (mobile, tablet, desktop)
+- Real-time WebSocket notifications
+- Dedicated pages for detailed analysis
 
 ### ✅ Filesystem & Shell Tools (Complete)
 - fs_read, fs_write with HITL policies

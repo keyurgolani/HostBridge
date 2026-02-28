@@ -9,11 +9,17 @@ Before trying commands, you can monitor and approve operations through the admin
 **Access:** http://localhost:8080/admin/  
 **Default Password:** `admin`
 
-The dashboard provides:
-- Real-time HITL approval queue
-- Complete audit log with search/filter
-- System health monitoring
-- Premium UI with 3D animations
+The dashboard provides a unified widget-based interface:
+- **HITL Approval Queue Widget:** See pending requests, approve/reject directly from dashboard
+- **System Health Widget:** Monitor uptime, error rates, and system metrics in real-time
+- **Recent Activity Widget:** View last 5 tool executions with status badges
+
+**Features:**
+- Expandable/collapsible widgets for flexible monitoring
+- Real-time updates via WebSocket (no refresh needed)
+- Quick actions directly from dashboard
+- "View All" buttons to navigate to dedicated pages for detailed analysis
+- Fully responsive design for mobile, tablet, and desktop
 
 ## Protocol Support
 
@@ -285,20 +291,24 @@ Before trying file operations, it's helpful to understand the workspace configur
 
 ### HITL (Human-in-the-Loop) Scenarios
 
-Certain operations require human approval through the admin dashboard. When triggered, these requests appear in real-time at http://localhost:8080/admin/hitl:
+Certain operations require human approval through the admin dashboard. When triggered, these requests appear in real-time in the HITL Approval Queue widget:
 
 **"Overwrite the file test.conf with new configuration"**
 - Writing to .conf files requires approval
-- Request appears in dashboard with countdown timer
-- Admin can approve or reject with optional note
+- Request appears in dashboard widget with yellow glow and countdown timer
+- Expand widget to see request details
+- Admin can approve or reject directly from dashboard
+- Or click "View All" to see full request details on dedicated page
 
 **"Create a new .env file with environment variables"**
 - Writing to .env files requires approval
-- Dashboard shows request parameters for review
+- Dashboard widget shows pending count badge
+- Real-time WebSocket notification
 
 **"Write to production.yaml with updated settings"**
 - Writing to .yaml files requires approval
-- Real-time WebSocket notification with sound alert
+- Widget updates immediately with visual alert
+- Sound notification plays (if enabled)
 
 ## Advanced Usage Patterns
 

@@ -35,13 +35,13 @@ export default function AuditLogPage() {
   }, {} as Record<string, number>)
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 md:space-y-6">
       <motion.div
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
       >
-        <h1 className="text-4xl font-bold gradient-text mb-2">Audit Log</h1>
-        <p className="text-muted-foreground">
+        <h1 className="text-3xl md:text-4xl font-bold gradient-text mb-2">Audit Log</h1>
+        <p className="text-sm md:text-base text-muted-foreground">
           Complete history of all tool executions
         </p>
       </motion.div>
@@ -123,59 +123,62 @@ export default function AuditLogPage() {
               No logs found matching your filters
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-border">
-                    <th className="text-left py-3 px-4 text-sm font-semibold text-muted-foreground">
-                      Timestamp
-                    </th>
-                    <th className="text-left py-3 px-4 text-sm font-semibold text-muted-foreground">
-                      Tool
-                    </th>
-                    <th className="text-left py-3 px-4 text-sm font-semibold text-muted-foreground">
-                      Protocol
-                    </th>
-                    <th className="text-left py-3 px-4 text-sm font-semibold text-muted-foreground">
-                      Status
-                    </th>
-                    <th className="text-left py-3 px-4 text-sm font-semibold text-muted-foreground">
-                      Duration
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredLogs.map((log, index) => (
-                    <motion.tr
-                      key={log.id}
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: index * 0.02 }}
-                      className="border-b border-border/50 hover:bg-accent/50 transition-colors"
-                    >
-                      <td className="py-3 px-4 text-sm">
-                        {formatTimestamp(log.timestamp)}
-                      </td>
-                      <td className="py-3 px-4">
-                        <code className="text-sm font-mono">
-                          {log.tool_category}_{log.tool_name}
-                        </code>
-                      </td>
-                      <td className="py-3 px-4 text-sm uppercase">
-                        {log.protocol}
-                      </td>
-                      <td className="py-3 px-4">
-                        <Badge className={getStatusBadgeClass(log.status)}>
-                          {log.status}
-                        </Badge>
-                      </td>
-                      <td className="py-3 px-4 text-sm">
-                        {log.duration_ms ? formatDuration(log.duration_ms) : '-'}
-                      </td>
-                    </motion.tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="overflow-x-auto -mx-4 md:mx-0">
+              <div className="inline-block min-w-full align-middle">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-border">
+                      <th className="text-left py-3 px-3 md:px-4 text-xs md:text-sm font-semibold text-muted-foreground">
+                        Timestamp
+                      </th>
+                      <th className="text-left py-3 px-3 md:px-4 text-xs md:text-sm font-semibold text-muted-foreground">
+                        Tool
+                      </th>
+                      <th className="text-left py-3 px-3 md:px-4 text-xs md:text-sm font-semibold text-muted-foreground hidden sm:table-cell">
+                        Protocol
+                      </th>
+                      <th className="text-left py-3 px-3 md:px-4 text-xs md:text-sm font-semibold text-muted-foreground">
+                        Status
+                      </th>
+                      <th className="text-left py-3 px-3 md:px-4 text-xs md:text-sm font-semibold text-muted-foreground hidden md:table-cell">
+                        Duration
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredLogs.map((log, index) => (
+                      <motion.tr
+                        key={log.id}
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: index * 0.02 }}
+                        className="border-b border-border/50 hover:bg-accent/50 transition-colors"
+                      >
+                        <td className="py-3 px-3 md:px-4 text-xs md:text-sm">
+                          <div className="hidden md:block">{formatTimestamp(log.timestamp)}</div>
+                          <div className="md:hidden text-xs">{new Date(log.timestamp).toLocaleTimeString()}</div>
+                        </td>
+                        <td className="py-3 px-3 md:px-4">
+                          <code className="text-xs md:text-sm font-mono break-all">
+                            {log.tool_category}_{log.tool_name}
+                          </code>
+                        </td>
+                        <td className="py-3 px-3 md:px-4 text-xs md:text-sm uppercase hidden sm:table-cell">
+                          {log.protocol}
+                        </td>
+                        <td className="py-3 px-3 md:px-4">
+                          <Badge className={getStatusBadgeClass(log.status)}>
+                            {log.status}
+                          </Badge>
+                        </td>
+                        <td className="py-3 px-3 md:px-4 text-xs md:text-sm hidden md:table-cell">
+                          {log.duration_ms ? formatDuration(log.duration_ms) : '-'}
+                        </td>
+                      </motion.tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
         </CardContent>

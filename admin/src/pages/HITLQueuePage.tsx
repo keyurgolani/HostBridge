@@ -84,25 +84,41 @@ export default function HITLQueuePage() {
   const pendingRequests = requests.filter((r) => r.status === 'pending')
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 md:space-y-6">
+      {/* Page Header */}
       <motion.div
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
+        className="flex flex-col md:flex-row md:items-center md:justify-between gap-4"
       >
-        <h1 className="text-4xl font-bold gradient-text mb-2">HITL Approval Queue</h1>
-        <p className="text-muted-foreground">
-          Review and approve tool execution requests in real-time
-        </p>
+        <div>
+          <h1 className="text-3xl md:text-4xl font-bold gradient-text mb-2">HITL Approval Queue</h1>
+          <p className="text-sm md:text-base text-muted-foreground">
+            Review and approve tool execution requests in real-time
+          </p>
+        </div>
+        
+        {/* Quick Stats */}
+        <div className="flex gap-3">
+          <div className="px-4 py-2 rounded-lg bg-accent/50 border border-border">
+            <div className="text-xs text-muted-foreground">Pending</div>
+            <div className="text-2xl font-bold text-yellow-500">{pendingRequests.length}</div>
+          </div>
+          <div className="px-4 py-2 rounded-lg bg-accent/50 border border-border">
+            <div className="text-xs text-muted-foreground">Total</div>
+            <div className="text-2xl font-bold">{requests.length}</div>
+          </div>
+        </div>
       </motion.div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
         {/* Queue List */}
         <div className="lg:col-span-2 space-y-4">
           <Card>
             <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle>Pending Requests</CardTitle>
-                <Badge variant={pendingRequests.length > 0 ? 'warning' : 'default'}>
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                <CardTitle className="text-lg md:text-xl">Pending Requests</CardTitle>
+                <Badge variant={pendingRequests.length > 0 ? 'warning' : 'default'} className="w-fit">
                   {pendingRequests.length} pending
                 </Badge>
               </div>
@@ -208,27 +224,27 @@ function HITLRequestCard({
       exit={{ opacity: 0, x: 20 }}
       transition={{ delay: index * 0.05 }}
       onClick={onSelect}
-      className={`glass rounded-lg p-4 cursor-pointer transition-all duration-200 ${
+      className={`glass rounded-lg p-3 md:p-4 cursor-pointer transition-all duration-200 ${
         isSelected ? 'ring-2 ring-primary glow' : 'hover:bg-accent/50'
       }`}
     >
-      <div className="flex items-start justify-between mb-3">
-        <div>
-          <h4 className="font-semibold text-lg">
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 mb-3">
+        <div className="flex-1 min-w-0">
+          <h4 className="font-semibold text-base md:text-lg truncate">
             {request.tool_category}_{request.tool_name}
           </h4>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-xs md:text-sm text-muted-foreground">
             {formatRelativeTime(request.created_at)}
           </p>
         </div>
-        <Badge variant="warning">
+        <Badge variant="warning" className="w-fit">
           <Clock className="w-3 h-3 mr-1" />
           {Math.floor(timeLeft)}s
         </Badge>
       </div>
 
       <div className="mb-3">
-        <div className="h-1 bg-muted rounded-full overflow-hidden">
+        <div className="h-1.5 md:h-2 bg-muted rounded-full overflow-hidden">
           <motion.div
             className="h-full bg-gradient-to-r from-yellow-500 to-orange-500"
             initial={{ width: '100%' }}
@@ -238,18 +254,18 @@ function HITLRequestCard({
         </div>
       </div>
 
-      <p className="text-sm text-muted-foreground mb-3">
+      <p className="text-xs md:text-sm text-muted-foreground mb-3 line-clamp-2">
         {request.policy_rule_matched}
       </p>
 
-      <div className="flex gap-2">
+      <div className="flex flex-col sm:flex-row gap-2">
         <Button
           size="sm"
           onClick={(e) => {
             e.stopPropagation()
             onApprove()
           }}
-          className="flex-1"
+          className="flex-1 text-sm"
         >
           <CheckCircle className="w-4 h-4 mr-1" />
           Approve
@@ -261,7 +277,7 @@ function HITLRequestCard({
             e.stopPropagation()
             onReject()
           }}
-          className="flex-1"
+          className="flex-1 text-sm"
         >
           <XCircle className="w-4 h-4 mr-1" />
           Reject
