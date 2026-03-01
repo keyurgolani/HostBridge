@@ -601,7 +601,7 @@ class MemoryStatsResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Plan models (Slice 9)
+# Plan execution models
 # ---------------------------------------------------------------------------
 
 class PlanTaskDef(BaseModel):
