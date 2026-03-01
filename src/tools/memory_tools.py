@@ -40,6 +40,15 @@ class NodeNotFoundError(ValueError):
     """Raised when a requested memory node does not exist."""
 
 
+# Common conversational words that add noise in memory search prompts.
+_FTS_NOISE_TOKENS = {
+    "a", "an", "and", "are", "be", "can", "do", "does", "for", "from",
+    "how", "i", "in", "is", "it", "know", "me", "my", "of", "on", "or",
+    "that", "the", "to", "what", "when", "where", "who", "why", "with",
+    "you", "your",
+}
+
+
 def _new_id() -> str:
     """Generate a new UUID string."""
     return str(uuid.uuid4())
@@ -58,6 +67,58 @@ def _parse_json_field(value: Optional[str], default: Any) -> Any:
         return json.loads(value)
     except (json.JSONDecodeError, TypeError):
         return default
+
+
+def _tokenize_search_query(query: str) -> List[str]:
+    """Tokenize text into FTS-safe alphanumeric terms, preserving order."""
+    return re.findall(r"\w+", query, flags=re.UNICODE)
+
+
+def _dedupe_preserve_order(tokens: List[str]) -> List[str]:
+    """Deduplicate tokens while preserving first occurrence order."""
+    seen = set()
+    out = []
+    for token in tokens:
+        key = token.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(token)
+    return out
+
+
+def _build_fts_query_candidates(query: str) -> List[str]:
+    """Build FTS5 query candidates from strict to broad for better recall."""
+    raw_tokens = _dedupe_preserve_order(_tokenize_search_query(query))
+    if not raw_tokens:
+        raw = query.strip()
+        return [raw] if raw else []
+
+    key_tokens = [t for t in raw_tokens if t.lower() not in _FTS_NOISE_TOKENS]
+    if not key_tokens:
+        key_tokens = raw_tokens
+
+    candidates: List[str] = []
+
+    def add(expr: str) -> None:
+        expr = expr.strip()
+        if expr and expr not in candidates:
+            candidates.append(expr)
+
+    if len(key_tokens) > 1:
+        add(" AND ".join(key_tokens))
+        add(" OR ".join(key_tokens))
+    else:
+        add(key_tokens[0])
+
+    if key_tokens != raw_tokens:
+        if len(raw_tokens) > 1:
+            add(" AND ".join(raw_tokens))
+            add(" OR ".join(raw_tokens))
+        else:
+            add(raw_tokens[0])
+
+    return candidates
 
 
 def _row_to_node(row) -> MemoryNode:
@@ -262,52 +323,55 @@ class MemoryTools:
 
         # ------ Full-text search branch ------
         if mode in ("fulltext", "hybrid"):
-            # Build a safe FTS5 query: strip special chars, AND-join all tokens.
-            # Wrapping the whole query in double-quotes forces phrase search which
-            # fails for multi-word queries where words don't appear consecutively.
-            tokens = re.sub(r'[^\w\s]', ' ', req.query).split()
-            if not tokens:
-                tokens = [req.query]
-            safe_query = ' '.join(tokens)
+            query_candidates = _build_fts_query_candidates(req.query)
+            if not query_candidates and req.query.strip():
+                query_candidates = [req.query.strip()]
+
             fts_sql = """
                 SELECT n.*, -bm25(memory_nodes_fts) AS score, 'content' as matched_field
                 FROM memory_nodes_fts
                 JOIN memory_nodes n ON memory_nodes_fts.rowid = n.rowid
                 WHERE memory_nodes_fts MATCH ?
             """
-            params: list = [safe_query]
+            base_params: list = []
 
             if req.entity_type:
                 fts_sql += " AND n.entity_type = ?"
-                params.append(req.entity_type)
+                base_params.append(req.entity_type)
 
             if req.tags:
                 for tag in req.tags:
                     fts_sql += " AND EXISTS (SELECT 1 FROM json_each(n.tags) WHERE value = ?)"
-                    params.append(tag)
+                    base_params.append(tag)
 
             if req.temporal_filter:
                 fts_sql += " AND n.created_at <= ?"
-                params.append(req.temporal_filter)
+                base_params.append(req.temporal_filter)
 
             fts_sql += " ORDER BY score DESC LIMIT ?"
-            params.append(req.max_results)
+            seen_ids = set()
 
-            try:
-                cur = await conn.execute(fts_sql, params)
-                rows = await cur.fetchall()
-                seen_ids = set()
-                for row in rows:
-                    if row["id"] not in seen_ids:
+            for candidate in query_candidates:
+                if len(results) >= req.max_results:
+                    break
+                params = [candidate, *base_params, req.max_results]
+                try:
+                    cur = await conn.execute(fts_sql, params)
+                    rows = await cur.fetchall()
+                    for row in rows:
+                        if row["id"] in seen_ids:
+                            continue
                         seen_ids.add(row["id"])
                         results.append(MemorySearchResult(
                             node=_row_to_node(row),
                             relevance_score=float(row["score"]),
                             matched_field=row["matched_field"],
                         ))
-            except Exception:
-                # FTS5 MATCH syntax errors should fall through gracefully
-                pass
+                        if len(results) >= req.max_results:
+                            break
+                except Exception:
+                    # FTS5 MATCH syntax errors should fall through gracefully
+                    continue
 
         # ------ Tags-only branch ------
         if mode == "tags" and req.tags:

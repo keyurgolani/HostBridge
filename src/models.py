@@ -626,7 +626,7 @@ class PlanCreateRequest(BaseModel):
 
 class PlanCreateResponse(BaseModel):
     """Response from plan creation."""
-    plan_id: str = Field(..., description="Unique plan ID")
+    plan_id: str = Field(..., description="Unique plan ID (use this in plan_execute, plan_status, and plan_cancel)")
     name: str = Field(..., description="Plan name")
     task_count: int = Field(..., description="Number of tasks in the plan")
     execution_levels: int = Field(..., description="Number of parallel execution levels")
@@ -651,7 +651,7 @@ class PlanTaskStatus(BaseModel):
 
 class PlanStatusRequest(BaseModel):
     """Request to get plan status."""
-    plan_id: str
+    plan_id: str = Field(..., description="Plan reference. Prefer the plan_id returned by plan_create; unique plan names are also accepted.")
 
 
 class PlanStatusResponse(BaseModel):
@@ -673,13 +673,13 @@ class PlanStatusResponse(BaseModel):
 
 class PlanExecuteRequest(BaseModel):
     """Request to execute a plan."""
-    plan_id: str
+    plan_id: str = Field(..., description="Plan reference. Prefer the plan_id returned by plan_create; unique plan names are also accepted.")
     timeout: int = Field(3600, description="Maximum execution time in seconds (default 1 hour)")
 
 
 class PlanExecuteResponse(BaseModel):
     """Response from plan execution."""
-    plan_id: str
+    plan_id: str = Field(..., description="Canonical plan ID that was executed")
     status: str = Field(..., description="Final plan status (completed|failed|cancelled)")
     tasks_completed: int
     tasks_failed: int
@@ -707,7 +707,7 @@ class PlanListResponse(BaseModel):
 
 class PlanCancelRequest(BaseModel):
     """Request to cancel a plan."""
-    plan_id: str
+    plan_id: str = Field(..., description="Plan reference. Prefer the plan_id returned by plan_create; unique plan names are also accepted.")
 
 
 class PlanCancelResponse(BaseModel):
@@ -726,4 +726,3 @@ class ErrorResponse(BaseModel):
     message: str = Field(..., description="Human-readable error message")
     suggestion: Optional[str] = Field(None, description="Suggestion for recovery")
     suggestion_tool: Optional[str] = Field(None, description="Suggested tool to use instead")
-

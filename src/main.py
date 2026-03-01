@@ -307,6 +307,7 @@ async def plan_not_found_handler(request: Request, exc: PlanNotFoundError):
         content=ErrorResponse(
             error_type="plan_not_found",
             message=str(exc),
+            suggestion="Use the plan_id returned by plan_create, or call plan_list to look up available plan IDs.",
             suggestion_tool="plan_list",
         ).model_dump(),
     )
@@ -2620,6 +2621,7 @@ Task params may contain `{{task:TASK_ID.field}}` references resolved at runtime.
 
 Validates the DAG at creation time using Kahn's algorithm (cycle detection, missing refs).
 Returns the execution order grouped by parallel level.
+The response includes `plan_id`; pass that value to `plan_execute`, `plan_status`, and `plan_cancel`.
 
 on_failure policies (plan-level default, overridable per-task):
 - **stop**: abort all remaining tasks when any task fails (default)
@@ -2628,6 +2630,9 @@ on_failure policies (plan-level default, overridable per-task):
 
 _PLAN_EXECUTE_DESC = """Execute a plan synchronously, blocking until all tasks complete.
 
+Input `plan_id` should be the `plan_id` returned by `plan_create`.
+For resilience, a unique plan name is also accepted; if multiple plans share that name, execution fails with an ambiguity error.
+
 Tasks at the same dependency level run **concurrently** via asyncio.gather.
 Task outputs are stored and can be referenced in downstream params via `{{task:ID.field}}`.
 Tasks with `require_hitl: true` block for human approval before executing.
@@ -2635,6 +2640,9 @@ Tasks with `require_hitl: true` block for human approval before executing.
 Returns the final plan status and per-task counts."""
 
 _PLAN_STATUS_DESC = """Get current status of a plan and all its tasks.
+
+Input `plan_id` should be the `plan_id` returned by `plan_create`.
+For resilience, a unique plan name is also accepted; ambiguous names return an error.
 
 Shows per-task status (pending|running|completed|failed|skipped),
 output, error messages, and timing information."""
@@ -2646,7 +2654,10 @@ Returns plan ID, name, status, task count, and timestamps for all plans."""
 _PLAN_CANCEL_DESC = """Cancel a plan, marking all pending and running tasks as skipped.
 
 A cancelled plan cannot be re-executed — create a new plan to re-run.
-Useful for aborting long-running plans."""
+Useful for aborting long-running plans.
+
+Input `plan_id` should be the `plan_id` returned by `plan_create`.
+For resilience, a unique plan name is also accepted; ambiguous names return an error."""
 
 
 @app.post(
@@ -3078,5 +3089,3 @@ async def docker_action_sub(request: DockerActionRequest) -> DockerActionRespons
         force_hitl=True,
         hitl_reason=f"Container action '{request.action}' on '{request.container}' requires approval",
     )
-
-

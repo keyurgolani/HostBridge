@@ -43,12 +43,15 @@ Built-in admin dashboard provides human oversight, HITL (Human-in-the-Loop) appr
 - **Workspace Management:** Secure path resolution and boundary enforcement
 - **HITL System:** Real-time approval workflow for sensitive operations
 - **Admin Dashboard:** Premium UI with real-time updates
+  - Automatic redirect to login when admin session expires
 - **Audit Logging:** Complete execution history
 - **Policy Engine:** Allow/block/HITL rules per tool
 - **Secret Management:** Secure secret resolution with `{{secret:KEY}}` template syntax
 - **HTTP Client:** Make outbound HTTP requests with SSRF protection, domain filtering, and secret injection
 - **Knowledge Graph Memory:** 12 tools for persistent knowledge storage with FTS5 search and graph traversal
+  - Improved natural-language memory search recall (question-style queries)
 - **Plan Execution:** DAG-based multi-step workflows with concurrent execution, task references, and failure handling
+  - Plan reference resolution by `plan_id` (preferred) or unique plan name with ambiguity protection
 - **WebSocket Support:** Real-time notifications
 - **Operational Documentation:** Docker Hub publishing guide, LLM system prompt template, and auto-generated tool catalog
 - **Deployment Examples:** Production compose file, policy-oriented config variants, and secrets template
@@ -422,8 +425,10 @@ http://localhost:8080/admin/
 - `plan_create` - Create a new plan with DAG validation
   - Validates task dependencies for cycles using Kahn's algorithm
   - Computes execution levels for concurrent task scheduling
-  - Returns plan ID, execution order, and task count
+  - Returns `plan_id`, execution order, and task count
 - `plan_execute` - Execute a plan synchronously until completion
+  - Pass `plan_id` from `plan_create` response
+  - Resilience fallback: a unique plan name is accepted; ambiguous names are rejected
   - Topological sort ensures correct dependency order
   - Concurrent execution via `asyncio.gather` for tasks at same level
   - Task reference resolution: `{{task:TASK_ID.field}}` in params
@@ -431,11 +436,13 @@ http://localhost:8080/admin/
   - Per-task `on_failure` override for fine-grained control
   - HITL integration: tasks with `require_hitl=True` block for approval
 - `plan_status` - Get plan and per-task status
+  - Prefer `plan_id` from `plan_create`; unique names are accepted when unambiguous
   - Task states: pending, running, completed, failed, skipped
   - Includes task outputs, errors, and timestamps
   - Counts: total, completed, failed, skipped, running
 - `plan_list` - List all plans with summary info
 - `plan_cancel` - Cancel a pending or running plan
+  - Prefer `plan_id` from `plan_create`; unique names are accepted when unambiguous
 
 ---
 
@@ -507,6 +514,13 @@ npm install
 npm run build
 ```
 
+### Test Admin Dashboard Frontend
+
+```bash
+cd admin
+npm run test
+```
+
 ### Run Tests
 
 ```bash
@@ -526,6 +540,9 @@ pytest --cov=src --cov-report=html
 
 # Run with verbose output
 pytest -v
+
+# Collect test inventory
+pytest --collect-only -q
 ```
 
 ### Run Locally (Development)
@@ -622,7 +639,8 @@ npm run dev
 - Typed, directed edges with temporal support (`valid_from`/`valid_until`)
 - `parent_of` edge convention for hierarchical knowledge trees
 - `memory_delete` is HITL-gated to prevent accidental knowledge loss
-- 46 tests passing
+- Natural-language query handling for question-style prompts (e.g., "What do you know about ...?")
+- 48 tests passing
 
 ### ✅ Plan Execution (Complete)
 
@@ -634,7 +652,10 @@ npm run dev
 - Per-task `on_failure` override
 - HITL integration for individual tasks
 - SQLite persistence for plan/task state
-- 53 tests passing
+- `plan_execute`/`plan_status`/`plan_cancel` accept `plan_id` (preferred) and unique plan names
+- Ambiguous plan names fail fast with explicit guidance
+- Brief execution retry window improves create/execute race resilience
+- 57 tests passing
 
 ### 📋 Upcoming Features
 - Additional tool categories as needed
@@ -696,7 +717,7 @@ Built following the design principles from:
 
 **Status:** Production Ready  
 **Version:** 0.1.0  
-**Last Updated:** February 28, 2026
+**Last Updated:** March 1, 2026
 
 ---
 
@@ -704,7 +725,7 @@ Built following the design principles from:
 
 The project includes comprehensive test coverage.
 
-As of this snapshot, `pytest --collect-only -q` reports **420 tests collected** across:
+As of this snapshot, `pytest --collect-only -q` reports **426 tests collected** across:
 
 - Unit tests for core modules and tool implementations
 - API and admin endpoint integration tests
@@ -712,3 +733,4 @@ As of this snapshot, `pytest --collect-only -q` reports **420 tests collected** 
 - Security regression tests (path traversal, SSRF, auth enforcement, input handling)
 - Load/concurrency tests for frequent file and API operations
 - Feature-specific suites for Git, Docker, memory graph, plan execution, secrets, and HTTP
+- Frontend unit tests (Vitest + jsdom) for admin auth/session behavior

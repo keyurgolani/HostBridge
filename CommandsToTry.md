@@ -20,6 +20,7 @@ The dashboard provides a unified widget-based interface:
 - Quick actions directly from dashboard
 - "View All" buttons to navigate to dedicated pages for detailed analysis
 - Fully responsive design for mobile, tablet, and desktop
+- Automatic redirect to `/admin/login` when session expires (401 handling)
 
 ## Protocol Support
 
@@ -431,6 +432,9 @@ HostBridge resolves `{{secret:KEY}}` placeholders server-side in any tool parame
 **"What do you know about Python?"** (after storing related nodes)
 - Uses `memory_search` to find relevant nodes via FTS5 BM25 ranking
 
+**"What do you know about Keyur Golani?"** (after storing facts)
+- Natural-language question phrasing is normalized for better recall on person-name queries
+
 **"Find everything related to databases"**
 - Searches knowledge graph for database-related nodes
 
@@ -589,6 +593,9 @@ Certain operations require human approval through the admin dashboard. When trig
 **"Run the load/concurrency suite with pytest tests/test_load.py -v"**
 - Checks behavior under concurrent file/API activity
 
+**"Run admin frontend unit tests with cd admin && npm run test"**
+- Validates auth/session behavior, including redirect on expired sessions
+
 ## Tips for LLM Interaction
 
 When working with an LLM that has access to these tools:
@@ -666,6 +673,8 @@ As of this version, HostBridge supports:
     - Validates task dependencies, detects cycles via Kahn's algorithm
     - Returns plan_id, execution order, task count
   - `plan_execute` - Execute a plan synchronously
+    - Prefer `plan_id` from `plan_create` response
+    - Unique plan names are accepted as fallback; ambiguous names are rejected
     - Topological sort ensures correct dependency order
     - Concurrent execution via asyncio.gather for same-level tasks
     - Task reference resolution: `{{task:TASK_ID.field}}`
@@ -801,6 +810,8 @@ This document will be updated as new tools are added to the server.
 
 **"Execute the plan I just created"**
 - Runs all tasks in topological order
+- Prefer passing `plan_id` returned by `plan_create`
+- Unique plan names are accepted only when exactly one plan matches
 - Tasks at same level execute concurrently
 - Returns final status, completed/failed/skipped counts, duration
 
@@ -864,6 +875,11 @@ curl -X POST http://localhost:8080/api/tools/plan/create \
 curl -X POST http://localhost:8080/api/tools/plan/execute \
   -H "Content-Type: application/json" \
   -d '{"plan_id": "<plan-id>"}'
+
+# Execute by unique plan name (fallback when unambiguous)
+curl -X POST http://localhost:8080/api/tools/plan/execute \
+  -H "Content-Type: application/json" \
+  -d '{"plan_id": "write-then-read"}'
 
 # Check plan status
 curl -X POST http://localhost:8080/api/tools/plan/status \

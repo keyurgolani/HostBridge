@@ -308,6 +308,40 @@ class TestMemorySearch:
         assert result.total_matches == 0
         assert result.results == []
 
+    @pytest.mark.asyncio
+    async def test_fulltext_search_handles_natural_language_question_for_full_name(self, memory_tools):
+        """Question-shaped queries should still match person names in stored memory."""
+        from src.models import MemoryStoreRequest, MemorySearchRequest
+
+        await memory_tools.store(MemoryStoreRequest(
+            content="I am Keyur Golani and I own a Honda Accord Hybrid car.",
+        ))
+
+        result = await memory_tools.search(MemorySearchRequest(
+            query="What do you know about Keyur Golani?",
+            search_mode="fulltext",
+        ))
+
+        assert result.total_matches >= 1
+        assert any("Keyur Golani" in r.node.content for r in result.results)
+
+    @pytest.mark.asyncio
+    async def test_fulltext_search_handles_natural_language_question_for_single_name(self, memory_tools):
+        """Question-shaped queries should match even when wrapped around a single keyword."""
+        from src.models import MemoryStoreRequest, MemorySearchRequest
+
+        await memory_tools.store(MemoryStoreRequest(
+            content="Keyur likes Honda cars.",
+        ))
+
+        result = await memory_tools.search(MemorySearchRequest(
+            query="What do you know about Keyur?",
+            search_mode="fulltext",
+        ))
+
+        assert result.total_matches >= 1
+        assert any("Keyur" in r.node.content for r in result.results)
+
 
 # ---------------------------------------------------------------------------
 # TestMemoryUpdate

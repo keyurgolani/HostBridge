@@ -268,6 +268,59 @@ class PlanTools:
             created_at=now,
         )
 
+    async def _resolve_plan_reference(
+        self,
+        conn,
+        plan_ref: str,
+        *,
+        operation: str,
+        wait_seconds: float = 0.0,
+    ) -> Dict[str, Any]:
+        """Resolve a plan reference by ID first, then by unique name."""
+        retry_interval = 0.1
+        attempts = max(1, int(wait_seconds / retry_interval) + 1)
+
+        for attempt in range(attempts):
+            cur = await conn.execute(
+                "SELECT * FROM plan_plans WHERE id = ?", (plan_ref,)
+            )
+            plan = await cur.fetchone()
+            if plan:
+                return dict(plan)
+
+            cur = await conn.execute(
+                "SELECT * FROM plan_plans WHERE name = ? ORDER BY created_at DESC, id DESC",
+                (plan_ref,),
+            )
+            matches = await cur.fetchall()
+
+            if len(matches) == 1:
+                resolved = dict(matches[0])
+                logger.info(
+                    "plan_reference_resolved",
+                    operation=operation,
+                    plan_reference=plan_ref,
+                    resolved_plan_id=resolved["id"],
+                    resolution="name",
+                )
+                return resolved
+
+            if len(matches) > 1:
+                sample_ids = [row["id"] for row in matches[:5]]
+                extra_count = len(matches) - len(sample_ids)
+                extra_text = f" (+{extra_count} more)" if extra_count > 0 else ""
+                raise ValueError(
+                    f"Multiple plans named '{plan_ref}' found (plan_ids: {', '.join(sample_ids)}{extra_text}). "
+                    "Use the exact plan_id returned by plan_create."
+                )
+
+            if attempt < attempts - 1:
+                await asyncio.sleep(retry_interval)
+
+        raise PlanNotFoundError(
+            f"Plan '{plan_ref}' not found. Pass the plan_id returned by plan_create."
+        )
+
     # ------------------------------------------------------------------
     # plan_execute
     # ------------------------------------------------------------------
@@ -284,29 +337,25 @@ class PlanTools:
         """
         conn = self.db.connection
 
-        cur = await conn.execute(
-            "SELECT * FROM plan_plans WHERE id = ?", (req.plan_id,)
+        plan = await self._resolve_plan_reference(
+            conn, req.plan_id, operation="execute", wait_seconds=1.0
         )
-        plan = await cur.fetchone()
-        if not plan:
-            raise PlanNotFoundError(f"Plan '{req.plan_id}' not found")
-
-        plan = dict(plan)
+        plan_id = plan["id"]
 
         if plan["status"] == "running":
-            raise ValueError(f"Plan '{req.plan_id}' is already running")
+            raise ValueError(f"Plan '{plan_id}' is already running")
         if plan["status"] in ("completed", "failed"):
             raise ValueError(
-                f"Plan '{req.plan_id}' already finished with status '{plan['status']}'. "
+                f"Plan '{plan_id}' already finished with status '{plan['status']}'. "
                 "Create a new plan to re-run."
             )
         if plan["status"] == "cancelled":
-            raise ValueError(f"Plan '{req.plan_id}' is cancelled and cannot be executed")
+            raise ValueError(f"Plan '{plan_id}' is cancelled and cannot be executed")
 
         # Load all tasks ordered by level
         cur = await conn.execute(
             "SELECT * FROM plan_tasks WHERE plan_id = ? ORDER BY execution_level, id",
-            (req.plan_id,),
+            (plan_id,),
         )
         all_task_rows = await cur.fetchall()
         all_tasks = [dict(r) for r in all_task_rows]
@@ -319,7 +368,7 @@ class PlanTools:
         now = _now_iso()
         await conn.execute(
             "UPDATE plan_plans SET status = 'running', started_at = ? WHERE id = ?",
-            (now, req.plan_id),
+            (now, plan_id),
         )
         await conn.commit()
 
@@ -336,7 +385,7 @@ class PlanTools:
             for level_idx in sorted(levels.keys()):
                 # Check for external cancellation
                 cur = await conn.execute(
-                    "SELECT status FROM plan_plans WHERE id = ?", (req.plan_id,)
+                    "SELECT status FROM plan_plans WHERE id = ?", (plan_id,)
                 )
                 plan_row = await cur.fetchone()
                 if plan_row and plan_row["status"] == "cancelled":
@@ -364,7 +413,7 @@ class PlanTools:
                     await conn.execute(
                         """UPDATE plan_tasks SET status = 'skipped', completed_at = ?
                            WHERE id = ? AND plan_id = ?""",
-                        (skip_now, task["id"], req.plan_id),
+                        (skip_now, task["id"], plan_id),
                     )
                 if tasks_to_skip:
                     await conn.commit()
@@ -374,7 +423,7 @@ class PlanTools:
 
                 # Execute all tasks at this level concurrently
                 coroutines = [
-                    self._execute_task(req.plan_id, task, task_outputs, plan)
+                    self._execute_task(plan_id, task, task_outputs, plan)
                     for task in tasks_to_run
                 ]
                 results = await asyncio.gather(*coroutines, return_exceptions=True)
@@ -399,7 +448,7 @@ class PlanTools:
         except asyncio.CancelledError:
             await conn.execute(
                 "UPDATE plan_plans SET status = 'cancelled', completed_at = ? WHERE id = ?",
-                (_now_iso(), req.plan_id),
+                (_now_iso(), plan_id),
             )
             await conn.commit()
             raise
@@ -407,7 +456,7 @@ class PlanTools:
         # Tally final counts from DB
         cur = await conn.execute(
             "SELECT status, COUNT(*) as cnt FROM plan_tasks WHERE plan_id = ? GROUP BY status",
-            (req.plan_id,),
+            (plan_id,),
         )
         status_counts: Dict[str, int] = {r["status"]: r["cnt"] for r in await cur.fetchall()}
 
@@ -417,7 +466,7 @@ class PlanTools:
 
         # Check if plan was cancelled externally during execution
         cur = await conn.execute(
-            "SELECT status FROM plan_plans WHERE id = ?", (req.plan_id,)
+            "SELECT status FROM plan_plans WHERE id = ?", (plan_id,)
         )
         current_plan_status = (await cur.fetchone())["status"]
 
@@ -425,7 +474,7 @@ class PlanTools:
             final_status = "completed" if tasks_failed == 0 else "failed"
             await conn.execute(
                 "UPDATE plan_plans SET status = ?, completed_at = ? WHERE id = ?",
-                (final_status, _now_iso(), req.plan_id),
+                (final_status, _now_iso(), plan_id),
             )
             await conn.commit()
         else:
@@ -434,7 +483,7 @@ class PlanTools:
         duration_ms = int(time.time() * 1000) - start_ms
         logger.info(
             "plan_execute",
-            plan_id=req.plan_id,
+            plan_id=plan_id,
             status=final_status,
             completed=tasks_completed,
             failed=tasks_failed,
@@ -443,7 +492,7 @@ class PlanTools:
         )
 
         return PlanExecuteResponse(
-            plan_id=req.plan_id,
+            plan_id=plan_id,
             status=final_status,
             tasks_completed=tasks_completed,
             tasks_failed=tasks_failed,
@@ -557,16 +606,14 @@ class PlanTools:
         """
         conn = self.db.connection
 
-        cur = await conn.execute(
-            "SELECT * FROM plan_plans WHERE id = ?", (req.plan_id,)
+        plan = await self._resolve_plan_reference(
+            conn, req.plan_id, operation="status"
         )
-        plan = await cur.fetchone()
-        if not plan:
-            raise PlanNotFoundError(f"Plan '{req.plan_id}' not found")
+        plan_id = plan["id"]
 
         cur = await conn.execute(
             "SELECT * FROM plan_tasks WHERE plan_id = ? ORDER BY execution_level, id",
-            (req.plan_id,),
+            (plan_id,),
         )
         task_rows = await cur.fetchall()
 
@@ -589,7 +636,7 @@ class PlanTools:
 
         statuses = [t.status for t in tasks]
         return PlanStatusResponse(
-            plan_id=req.plan_id,
+            plan_id=plan_id,
             name=plan["name"],
             status=plan["status"],
             on_failure=plan["on_failure"],
@@ -652,16 +699,14 @@ class PlanTools:
         """
         conn = self.db.connection
 
-        cur = await conn.execute(
-            "SELECT * FROM plan_plans WHERE id = ?", (req.plan_id,)
+        plan = await self._resolve_plan_reference(
+            conn, req.plan_id, operation="cancel"
         )
-        plan = await cur.fetchone()
-        if not plan:
-            raise PlanNotFoundError(f"Plan '{req.plan_id}' not found")
+        plan_id = plan["id"]
 
         if plan["status"] in ("completed", "cancelled"):
             raise ValueError(
-                f"Plan '{req.plan_id}' is already '{plan['status']}' and cannot be cancelled"
+                f"Plan '{plan_id}' is already '{plan['status']}' and cannot be cancelled"
             )
 
         now = _now_iso()
@@ -670,25 +715,25 @@ class PlanTools:
         cur = await conn.execute(
             """SELECT COUNT(*) as cnt FROM plan_tasks
                WHERE plan_id = ? AND status IN ('pending', 'ready', 'running')""",
-            (req.plan_id,),
+            (plan_id,),
         )
         cancelled_count = (await cur.fetchone())["cnt"]
 
         await conn.execute(
             """UPDATE plan_tasks SET status = 'skipped', completed_at = ?
                WHERE plan_id = ? AND status IN ('pending', 'ready', 'running')""",
-            (now, req.plan_id),
+            (now, plan_id),
         )
         await conn.execute(
             "UPDATE plan_plans SET status = 'cancelled', completed_at = ? WHERE id = ?",
-            (now, req.plan_id),
+            (now, plan_id),
         )
         await conn.commit()
 
-        logger.info("plan_cancel", plan_id=req.plan_id, cancelled_tasks=cancelled_count)
+        logger.info("plan_cancel", plan_id=plan_id, cancelled_tasks=cancelled_count)
 
         return PlanCancelResponse(
-            plan_id=req.plan_id,
+            plan_id=plan_id,
             cancelled_tasks=cancelled_count,
             status="cancelled",
         )

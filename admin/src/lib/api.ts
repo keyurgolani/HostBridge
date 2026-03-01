@@ -1,3 +1,14 @@
+import { useAuthStore } from '@/store/authStore'
+
+type AuthStoreLike = Pick<typeof useAuthStore, 'getState'>
+type LocationLike = Pick<Location, 'pathname' | 'assign'>
+
+interface APIOptions {
+  authStore?: AuthStoreLike
+  fetchImpl?: typeof fetch
+  location?: LocationLike
+}
+
 export interface HITLRequest {
   id: string
   created_at: string
@@ -103,16 +114,60 @@ export interface ContainerLogs {
   logs: string
 }
 
-class API {
+export class API {
   private baseUrl = window.location.origin
+  private handlingUnauthorized = false
+  private authStore: AuthStoreLike
+  private fetchImpl: typeof fetch
+  private location: LocationLike
+
+  constructor(options: APIOptions = {}) {
+    this.authStore = options.authStore ?? useAuthStore
+    this.fetchImpl = options.fetchImpl ?? fetch
+    this.location = options.location ?? window.location
+  }
+
+  private handleUnauthorized() {
+    if (this.handlingUnauthorized) return
+    this.handlingUnauthorized = true
+
+    this.authStore.getState().logout()
+
+    // Force a navigation so protected routes are re-evaluated immediately.
+    if (this.location.pathname !== '/admin/login') {
+      this.location.assign('/admin/login')
+    } else {
+      this.handlingUnauthorized = false
+    }
+  }
+
+  private async request(
+    path: string,
+    init?: RequestInit,
+    options?: { skipAuthRedirect?: boolean }
+  ): Promise<Response> {
+    const response = await this.fetchImpl(`${this.baseUrl}${path}`, {
+      credentials: 'include',
+      ...init,
+    })
+
+    if (response.status === 401 && !options?.skipAuthRedirect) {
+      this.handleUnauthorized()
+    }
+
+    return response
+  }
 
   async login(password: string): Promise<{ token: string }> {
-    const response = await fetch(`${this.baseUrl}/admin/api/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ password }),
-      credentials: 'include',
-    })
+    const response = await this.request(
+      '/admin/api/login',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password }),
+      },
+      { skipAuthRedirect: true }
+    )
 
     if (!response.ok) {
       throw new Error('Invalid password')
@@ -122,16 +177,13 @@ class API {
   }
 
   async logout(): Promise<void> {
-    await fetch(`${this.baseUrl}/admin/api/logout`, {
+    await this.request('/admin/api/logout', {
       method: 'POST',
-      credentials: 'include',
     })
   }
 
   async getAuditLogs(limit = 100): Promise<AuditLogEntry[]> {
-    const response = await fetch(`${this.baseUrl}/admin/api/audit?limit=${limit}`, {
-      credentials: 'include',
-    })
+    const response = await this.request(`/admin/api/audit?limit=${limit}`)
 
     if (!response.ok) {
       throw new Error('Failed to fetch audit logs')
@@ -162,9 +214,7 @@ class API {
     if (params.end_time) searchParams.set('end_time', params.end_time)
     if (params.search) searchParams.set('search', params.search)
 
-    const response = await fetch(`${this.baseUrl}/admin/api/audit/filtered?${searchParams}`, {
-      credentials: 'include',
-    })
+    const response = await this.request(`/admin/api/audit/filtered?${searchParams}`)
 
     if (!response.ok) {
       throw new Error('Failed to fetch filtered audit logs')
@@ -186,9 +236,7 @@ class API {
     if (params.start_time) searchParams.set('start_time', params.start_time)
     if (params.end_time) searchParams.set('end_time', params.end_time)
 
-    const response = await fetch(`${this.baseUrl}/admin/api/audit/export?${searchParams}`, {
-      credentials: 'include',
-    })
+    const response = await this.request(`/admin/api/audit/export?${searchParams}`)
 
     if (!response.ok) {
       throw new Error('Failed to export audit logs')
@@ -198,9 +246,7 @@ class API {
   }
 
   async getSystemHealth(): Promise<SystemHealth> {
-    const response = await fetch(`${this.baseUrl}/admin/api/health`, {
-      credentials: 'include',
-    })
+    const response = await this.request('/admin/api/health')
 
     if (!response.ok) {
       throw new Error('Failed to fetch system health')
@@ -210,9 +256,7 @@ class API {
   }
 
   async getDetailedHealth(): Promise<DetailedHealth> {
-    const response = await fetch(`${this.baseUrl}/admin/api/health/detailed`, {
-      credentials: 'include',
-    })
+    const response = await this.request('/admin/api/health/detailed')
 
     if (!response.ok) {
       throw new Error('Failed to fetch detailed health')
@@ -222,9 +266,7 @@ class API {
   }
 
   async getTools(): Promise<ToolListResponse> {
-    const response = await fetch(`${this.baseUrl}/admin/api/tools`, {
-      credentials: 'include',
-    })
+    const response = await this.request('/admin/api/tools')
 
     if (!response.ok) {
       throw new Error('Failed to fetch tools')
@@ -234,9 +276,7 @@ class API {
   }
 
   async getToolSchema(category: string, name: string): Promise<ToolSchema> {
-    const response = await fetch(`${this.baseUrl}/admin/api/tools/${category}/${name}`, {
-      credentials: 'include',
-    })
+    const response = await this.request(`/admin/api/tools/${category}/${name}`)
 
     if (!response.ok) {
       throw new Error('Failed to fetch tool schema')
@@ -246,9 +286,7 @@ class API {
   }
 
   async getConfig(): Promise<ConfigResponse> {
-    const response = await fetch(`${this.baseUrl}/admin/api/config`, {
-      credentials: 'include',
-    })
+    const response = await this.request('/admin/api/config')
 
     if (!response.ok) {
       throw new Error('Failed to fetch config')
@@ -258,9 +296,7 @@ class API {
   }
 
   async getDashboardStats(): Promise<DashboardStats> {
-    const response = await fetch(`${this.baseUrl}/admin/api/stats`, {
-      credentials: 'include',
-    })
+    const response = await this.request('/admin/api/stats')
 
     if (!response.ok) {
       throw new Error('Failed to fetch dashboard stats')
@@ -270,9 +306,7 @@ class API {
   }
 
   async getContainers(): Promise<ContainerInfo[]> {
-    const response = await fetch(`${this.baseUrl}/admin/api/containers`, {
-      credentials: 'include',
-    })
+    const response = await this.request('/admin/api/containers')
 
     if (!response.ok) {
       throw new Error('Failed to fetch containers')
@@ -282,9 +316,7 @@ class API {
   }
 
   async getContainerLogs(containerId: string, tail = 100): Promise<ContainerLogs> {
-    const response = await fetch(`${this.baseUrl}/admin/api/containers/${containerId}/logs?tail=${tail}`, {
-      credentials: 'include',
-    })
+    const response = await this.request(`/admin/api/containers/${containerId}/logs?tail=${tail}`)
 
     if (!response.ok) {
       throw new Error('Failed to fetch container logs')

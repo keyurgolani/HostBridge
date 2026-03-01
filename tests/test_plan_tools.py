@@ -347,6 +347,51 @@ class TestPlanExecuteSuccess:
         consumer_params = dispatched_params[1]
         assert consumer_params["input"] == "resolved_data"
 
+    @pytest.mark.asyncio
+    async def test_execute_resolves_unique_plan_name_reference(self, plan_db):
+        """If plan_id is a unique plan name, execute should resolve it."""
+        async def dispatch(category, name, params):
+            return {"ok": True}
+
+        pt = _make_plan_tools(plan_db, dispatch=dispatch)
+        conn = plan_db.connection
+        await conn.execute("DELETE FROM plan_tasks")
+        await conn.execute("DELETE FROM plan_plans")
+        await conn.commit()
+
+        from src.models import PlanExecuteRequest
+
+        created = await pt.create(make_create_req("plan_name_ref", [make_task("t1")]))
+        result = await pt.execute(PlanExecuteRequest(plan_id="plan_name_ref"))
+
+        assert result.status == "completed"
+        assert result.plan_id == created.plan_id
+
+    @pytest.mark.asyncio
+    async def test_execute_waits_briefly_for_concurrent_plan_create_by_name(self, plan_db):
+        """If execute races create, a brief retry window should resolve by name."""
+        async def dispatch(category, name, params):
+            return {"ok": True}
+
+        pt = _make_plan_tools(plan_db, dispatch=dispatch)
+        conn = plan_db.connection
+        await conn.execute("DELETE FROM plan_tasks")
+        await conn.execute("DELETE FROM plan_plans")
+        await conn.commit()
+
+        from src.models import PlanExecuteRequest
+
+        async def delayed_create():
+            await asyncio.sleep(0.15)
+            return await pt.create(make_create_req("race_plan_name", [make_task("t1")]))
+
+        create_task = asyncio.create_task(delayed_create())
+        result = await pt.execute(PlanExecuteRequest(plan_id="race_plan_name"))
+        created = await create_task
+
+        assert result.status == "completed"
+        assert result.plan_id == created.plan_id
+
 
 # ---------------------------------------------------------------------------
 # TestPlanExecuteFailurePolicies
@@ -513,6 +558,17 @@ class TestPlanExecuteNotFound:
 
         with pytest.raises(PlanNotFoundError):
             await plan_tools.execute(PlanExecuteRequest(plan_id="does-not-exist"))
+
+    @pytest.mark.asyncio
+    async def test_execute_plan_name_ambiguous_raises_value_error(self, plan_tools):
+        """Name fallback should fail when multiple plans share the same name."""
+        from src.models import PlanExecuteRequest
+
+        await plan_tools.create(make_create_req("duplicate_name", [make_task("a1")]))
+        await plan_tools.create(make_create_req("duplicate_name", [make_task("a2")]))
+
+        with pytest.raises(ValueError, match="Multiple plans named"):
+            await plan_tools.execute(PlanExecuteRequest(plan_id="duplicate_name"))
 
     @pytest.mark.asyncio
     async def test_execute_already_completed(self, plan_db):
@@ -998,6 +1054,20 @@ class TestPlanIntegration:
         assert data["status"] == "pending"
         assert data["tasks_total"] == 2
         assert len(data["tasks"]) == 2
+
+    def test_execute_by_unique_plan_name_via_api(self):
+        """Execute endpoint should resolve unique plan names and return canonical plan_id."""
+        tasks = [{"id": "e1", "name": "E1", "tool_category": "fs", "tool_name": "read", "params": {}, "depends_on": []}]
+        with _api_client() as client:
+            create_resp = _api_create_plan(client, "execute_by_name_api", tasks)
+            assert create_resp.status_code == 200
+            created_plan_id = create_resp.json()["plan_id"]
+
+            exec_resp = client.post("/api/tools/plan/execute", json={"plan_id": "execute_by_name_api"})
+        assert exec_resp.status_code == 200
+        data = exec_resp.json()
+        assert data["plan_id"] == created_plan_id
+        assert data["status"] in ("completed", "failed")
 
     def test_create_then_cancel_via_api(self):
         """Create a plan and cancel it via API."""
