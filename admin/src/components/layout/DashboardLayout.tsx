@@ -1,6 +1,6 @@
 import { Outlet, NavLink, useLocation } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Bell, Activity, FileText, LogOut, Menu, X, AlertCircle, CheckCircle, LayoutDashboard, Wrench, Settings, Key } from 'lucide-react'
+import { Bell, Activity, FileText, LogOut, Menu, X, AlertCircle, CheckCircle, LayoutDashboard, Wrench, Settings, Key, Container } from 'lucide-react'
 import { useState, useEffect, useCallback } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useAuthStore } from '@/store/authStore'
@@ -80,6 +80,7 @@ export default function DashboardLayout() {
     { to: '/audit', icon: FileText, label: 'Audit Log' },
     { to: '/health', icon: Activity, label: 'System Health' },
     { to: '/tools', icon: Wrench, label: 'Tool Explorer' },
+    { to: '/containers', icon: Container, label: 'Containers' },
     { to: '/secrets', icon: Key, label: 'Secrets' },
     { to: '/config', icon: Settings, label: 'Configuration' },
   ]

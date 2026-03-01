@@ -61,13 +61,20 @@ Built-in admin dashboard provides human oversight, HITL (Human-in-the-Loop) appr
 ### ✅ Admin Dashboard Enhancements (Complete)
 
 - **Tool Explorer:** Browse and inspect all available tools with their JSON schemas
+  - Tool list built from OpenAPI contract (not reflection)
+  - Accurate HITL indicators from effective policy configuration
+  - Input/output schemas populated from request/response models
 - **Configuration Viewer:** View current server configuration and HTTP settings
 - **Secrets Management:** View loaded secret keys and trigger hot reload from the UI
 - **Enhanced System Health:** Real-time CPU, memory, database, and workspace metrics
-- **Audit Log Export:** Export filtered logs as JSON or CSV
+- **Audit Log Enhancements:**
+  - Export filtered logs as JSON or CSV
+  - Real-time WebSocket streaming with polling fallback
+  - Live connection status indicator (Live/Polling/Offline)
+  - New log notification badges
 - **Real-time Audit Stream:** WebSocket endpoint for live audit event streaming
 - **Browser Notifications:** Desktop alerts for HITL approval requests
-- **Container Log Viewer:** View logs from Docker containers in admin UI
+- **Container Log Viewer:** Dedicated page to browse containers and view their logs
 - **Mobile Responsive:** Full responsive design for all device sizes
 
 ### ✅ MCP Protocol Improvements
@@ -603,9 +610,11 @@ npm run dev
 - DAG plan execution with concurrency, task references, and configurable failure policies.
 
 ### Test Coverage Snapshot
-- `pytest --collect-only -q` reports 426 backend tests.
+- `pytest --collect-only -q` reports 434 backend tests.
 - Memory tool suite: 48 tests.
 - Plan execution suite: 57 tests.
+- HITL WebSocket roundtrip tests: 7 tests.
+- Tool Explorer contract tests: 13 tests.
 - Frontend admin auth/session tests run with Vitest + jsdom.
 
 ---
@@ -673,7 +682,7 @@ Built following the design principles from:
 
 The project includes comprehensive test coverage.
 
-As of this snapshot, `pytest --collect-only -q` reports **426 tests collected** across:
+As of this snapshot, `pytest --collect-only -q` reports **434 tests collected** across:
 
 - Unit tests for core modules and tool implementations
 - API and admin endpoint integration tests
@@ -681,4 +690,6 @@ As of this snapshot, `pytest --collect-only -q` reports **426 tests collected** 
 - Security regression tests (path traversal, SSRF, auth enforcement, input handling)
 - Load/concurrency tests for frequent file and API operations
 - Feature-specific suites for Git, Docker, memory graph, plan execution, secrets, and HTTP
+- Tool Explorer contract tests verifying OpenAPI-based tool listing
+- HITL WebSocket roundtrip and disconnect resilience tests
 - Frontend unit tests (Vitest + jsdom) for admin auth/session behavior
