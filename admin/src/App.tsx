@@ -9,6 +9,7 @@ import AuditLogPage from './pages/AuditLogPage'
 import SystemHealthPage from './pages/SystemHealthPage'
 import ToolExplorerPage from './pages/ToolExplorerPage'
 import ConfigPage from './pages/ConfigPage'
+import SecretsPage from './pages/SecretsPage'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -49,6 +50,7 @@ function App() {
             <Route path="health" element={<SystemHealthPage />} />
             <Route path="tools" element={<ToolExplorerPage />} />
             <Route path="config" element={<ConfigPage />} />
+            <Route path="secrets" element={<SecretsPage />} />
           </Route>
         </Routes>
       </BrowserRouter>

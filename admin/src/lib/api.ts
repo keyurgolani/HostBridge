@@ -114,6 +114,18 @@ export interface ContainerLogs {
   logs: string
 }
 
+export interface SecretsInfo {
+  keys: string[]
+  count: number
+  secrets_file: string
+}
+
+export interface SecretsReloadResponse {
+  message: string
+  count: number
+  secrets_file: string
+}
+
 export class API {
   private baseUrl = window.location.origin
   private handlingUnauthorized = false
@@ -320,6 +332,28 @@ export class API {
 
     if (!response.ok) {
       throw new Error('Failed to fetch container logs')
+    }
+
+    return response.json()
+  }
+
+  async getSecrets(): Promise<SecretsInfo> {
+    const response = await this.request('/admin/api/secrets')
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch secrets')
+    }
+
+    return response.json()
+  }
+
+  async reloadSecrets(): Promise<SecretsReloadResponse> {
+    const response = await this.request('/admin/api/secrets/reload', {
+      method: 'POST',
+    })
+
+    if (!response.ok) {
+      throw new Error('Failed to reload secrets')
     }
 
     return response.json()

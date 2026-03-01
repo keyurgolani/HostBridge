@@ -207,6 +207,10 @@ class GitPushRequest(BaseModel):
     branch: Optional[str] = Field(None, description="Branch name (current branch if not specified)")
     force: bool = Field(False, description="Force push")
     workspace_dir: Optional[str] = Field(None, description="Override workspace directory")
+    # Credential fields for authenticated push (support {{secret:KEY}} templates)
+    auth_username: Optional[str] = Field(None, description="Git username for authentication (use {{secret:KEY}} for secrets)")
+    auth_password: Optional[str] = Field(None, description="Git password/token for authentication (use {{secret:KEY}} for secrets)")
+    auth_env: Optional[dict[str, str]] = Field(None, description="Additional environment variables for git (use {{secret:KEY}} for sensitive values)")
 
 
 class GitPushResponse(BaseModel):
@@ -224,6 +228,10 @@ class GitPullRequest(BaseModel):
     branch: Optional[str] = Field(None, description="Branch name")
     rebase: bool = Field(False, description="Use rebase instead of merge")
     workspace_dir: Optional[str] = Field(None, description="Override workspace directory")
+    # Credential fields for authenticated pull (support {{secret:KEY}} templates)
+    auth_username: Optional[str] = Field(None, description="Git username for authentication (use {{secret:KEY}} for secrets)")
+    auth_password: Optional[str] = Field(None, description="Git password/token for authentication (use {{secret:KEY}} for secrets)")
+    auth_env: Optional[dict[str, str]] = Field(None, description="Additional environment variables for git (use {{secret:KEY}} for sensitive values)")
 
 
 class GitPullResponse(BaseModel):
