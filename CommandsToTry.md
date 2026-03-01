@@ -783,14 +783,6 @@ When using REST API directly:
 - `GET /admin/api/secrets` - List loaded secret key names (admin auth required)
 - `POST /admin/api/secrets/reload` - Reload secrets from file (admin auth required)
 
-## Future Tools (Coming Soon)
-
-The following tools are planned for future releases:
-
-- Admin dashboard enhancements
-
-This document will be updated as new tools are added to the server.
-
 ## Plan Tools (DAG Execution)
 
 ### Creating Plans

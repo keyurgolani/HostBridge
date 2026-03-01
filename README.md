@@ -501,7 +501,7 @@ http://localhost:8080/admin/
 ├── examples/              # Config and deployment templates
 ├── scripts/               # Utility scripts (for docs generation, etc.)
 ├── tests/                 # Unit, integration, security, and load tests
-├── development/           # Additional specs and planning notes
+├── development/           # Supplemental project documentation
 ├── docker-compose.yaml    # Docker config
 └── Dockerfile            # Container image
 ```
@@ -571,100 +571,39 @@ npm run dev
 
 ---
 
-## Roadmap
+## Capability Reference
 
-### ✅ Core Infrastructure (Complete)
-- FastAPI setup with dual protocol support
-- Workspace management with security
-- Policy engine with allow/block/HITL rules
-- Audit logging system
-- Database setup (SQLite)
+### Core Platform
+- FastAPI service exposes MCP (`/mcp`) and OpenAPI (`/api/tools/*`) interfaces from one backend.
+- SQLite persists audit history, HITL state, memory graph data, and plan execution data.
 
-### ✅ HITL System (Complete)
-- HITL manager with async event handling
-- WebSocket support for real-time notifications
-- Synchronous blocking workflow
-- Timeout and expiry handling
+### Security and Governance
+- Workspace boundary enforcement prevents path traversal and out-of-scope file access.
+- Policy engine supports allow, block, and HITL actions per tool operation.
+- Secrets resolve server-side with `{{secret:KEY}}`; audit logs store templates, not secret values.
+- HTTP tool includes SSRF protections for private ranges and cloud metadata endpoints.
 
-### ✅ Admin Dashboard (Complete)
-- React dashboard with premium UI and glassmorphism design
-- Unified widget-based dashboard as default landing page
-- Expandable/collapsible widgets for flexible monitoring
-- HITL queue with real-time updates and direct approve/reject
-- Audit log with search/filter and status badges
-- System health monitoring with color-coded indicators
-- Fully responsive design (mobile, tablet, desktop)
-- Real-time WebSocket notifications
-- Dedicated pages for detailed analysis
+### Admin Experience
+- Password-protected dashboard with real-time HITL queue, health metrics, and recent activity.
+- Tool explorer, configuration viewer, audit filtering/export, and container log views.
+- Session expiry handling redirects users to `/admin/login` after unauthorized responses.
 
-### ✅ Filesystem & Shell Tools (Complete)
-- fs_read, fs_write with HITL policies
-- fs_list with recursive traversal
-- fs_search with regex support
-- shell_execute with security controls
+### Tooling
+- Filesystem, shell, git, docker, workspace, and HTTP tool categories.
+- Memory graph tooling with full-text search and relationship traversal.
+- DAG plan execution with concurrency, task references, and configurable failure policies.
 
-### ✅ Git Tools (Complete)
-- Read-only: status, log, diff, show, list_branches, remote, stash
-- Write operations: commit, push, pull, checkout, branch (with HITL)
-- Git authentication support via environment variables
-- Comprehensive test coverage (27 unit tests, 12 integration tests)
-
-### ✅ Docker Tools (Complete)
-- Container listing with filtering (name, status, all/running)
-- Container inspection (config, network, mounts, state)
-- Log retrieval with tail and timestamp filtering
-- Container lifecycle control (start, stop, restart, pause, unpause)
-- HITL approval for destructive operations
-- Docker socket integration with read-only mount
-- Comprehensive test coverage (20 unit tests, 7 integration tests)
-
-### ✅ Secret Management & HTTP Client (Complete)
-- `{{secret:KEY}}` template syntax resolved server-side across all tool parameters
-- Secrets file loader (`.env` format) with hot reload via admin API
-- Secret masking in audit logs (templates stored, not resolved values)
-- Deep-copy parameter handling: originals preserved for audit, resolved copy for execution
-- `workspace_secrets_list` tool — exposes key names only, never values
-- Admin dashboard secrets page: list keys, trigger reload
-- `http_request` tool with async `httpx` client
-- SSRF protection: private IPs, RFC 1918 ranges, cloud metadata endpoints blocked
-- Domain allowlist and blocklist with wildcard subdomain support (`*.example.com`)
-- Configurable timeout, response truncation, follow-redirects
-- Comprehensive test coverage (22 secrets tests, 32 HTTP tests)
-
-### ✅ Knowledge Graph Memory (Complete)
-
-- 12 tools: `memory_store`, `memory_get`, `memory_search`, `memory_update`, `memory_delete`, `memory_link`, `memory_children`, `memory_ancestors`, `memory_roots`, `memory_related`, `memory_subtree`, `memory_stats`
-- SQLite FTS5 full-text search with BM25 relevance ranking
-- Graph traversal via recursive CTEs (ancestors, subtree) with configurable depth limits
-- Typed, directed edges with temporal support (`valid_from`/`valid_until`)
-- `parent_of` edge convention for hierarchical knowledge trees
-- `memory_delete` is HITL-gated to prevent accidental knowledge loss
-- Natural-language query handling for question-style prompts (e.g., "What do you know about ...?")
-- 48 tests passing
-
-### ✅ Plan Execution (Complete)
-
-- 5 tools: `plan_create`, `plan_execute`, `plan_status`, `plan_list`, `plan_cancel`
-- DAG validation with Kahn's algorithm for cycle detection
-- Concurrent level execution via `asyncio.gather`
-- Task reference resolution: `{{task:TASK_ID.field}}`
-- Three failure policies: `stop`, `skip_dependents`, `continue`
-- Per-task `on_failure` override
-- HITL integration for individual tasks
-- SQLite persistence for plan/task state
-- `plan_execute`/`plan_status`/`plan_cancel` accept `plan_id` (preferred) and unique plan names
-- Ambiguous plan names fail fast with explicit guidance
-- Brief execution retry window improves create/execute race resilience
-- 57 tests passing
-
-### 📋 Upcoming Features
-- Additional tool categories as needed
+### Test Coverage Snapshot
+- `pytest --collect-only -q` reports 426 backend tests.
+- Memory tool suite: 48 tests.
+- Plan execution suite: 57 tests.
+- Frontend admin auth/session tests run with Vitest + jsdom.
 
 ---
 
 ## Contributing
 
-This is a design document implementation project. See `development/spec.md` for the complete specification.
+Contributions are welcome. Prefer focused pull requests, include tests for behavior changes, and keep comments/docs focused on durable behavior and operational guidance.
 
 ---
 

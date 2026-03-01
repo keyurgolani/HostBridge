@@ -1,4 +1,4 @@
-"""Tests for Slice 10: Admin Dashboard Polish features."""
+"""Tests for admin dashboard API endpoints and related UX behavior."""
 
 import os
 import sys
