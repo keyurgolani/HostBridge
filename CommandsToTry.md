@@ -289,6 +289,14 @@ Before trying file operations, it's helpful to understand the workspace configur
 **"Push changes to origin main"** (requires approval)
 - Pushes commits to remote repository
 
+**"Push to a private repository using my GITHUB_TOKEN secret"** (requires approval)
+- Uses `{{secret:GITHUB_TOKEN}}` for authentication
+- Secure GIT_ASKPASS flow handles credentials automatically
+
+**"Pull from a private repository with credentials from secrets"**
+- Uses `{{secret:GIT_USER}}` and `{{secret:GIT_TOKEN}}` for authentication
+- Credentials are resolved server-side and never logged
+
 **"Pull latest changes from origin"**
 - Fetches and merges changes from remote
 

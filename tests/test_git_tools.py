@@ -473,6 +473,120 @@ async def test_git_log_with_path_filter(git_tools, git_repo, temp_workspace):
         repo_path=git_repo,
         path="README.md",
     )
-    
+
     assert "commits" in result
     assert len(result["commits"]) >= 1
+
+
+# ============================================================================
+# GIT_ASKPASS Authentication Tests (P2-0.6)
+# ============================================================================
+
+import tempfile
+import os
+
+
+class TestGitAskpass:
+    """Test GIT_ASKPASS credential helper functionality."""
+
+    @pytest.mark.asyncio
+    async def test_askpass_script_created_and_cleaned_up(self, git_tools):
+        """Test that the askpass script is created and properly cleaned up."""
+        username = "test_user"
+        password = "test_token"
+
+        # Track the script path
+        script_path = None
+
+        async with git_tools._create_askpass_script(username, password) as path:
+            script_path = path
+            # Verify script exists and is executable
+            assert os.path.exists(script_path)
+            assert os.access(script_path, os.X_OK)
+
+            # Verify script content
+            with open(script_path, 'r') as f:
+                content = f.read()
+                assert username in content
+                assert password in content
+                assert "#!/bin/sh" in content
+
+        # Verify script is cleaned up
+        assert not os.path.exists(script_path), "Askpass script should be deleted after use"
+
+    @pytest.mark.asyncio
+    async def test_askpass_script_outputs_username(self, git_tools):
+        """Test that askpass script outputs username when prompted."""
+        import subprocess
+
+        username = "test_user"
+        password = "test_token"
+
+        async with git_tools._create_askpass_script(username, password) as script_path:
+            # Simulate git asking for username
+            result = subprocess.run(
+                ["sh", script_path, "Username for 'https://github.com':"],
+                capture_output=True,
+                text=True
+            )
+            assert result.stdout.strip() == username
+
+    @pytest.mark.asyncio
+    async def test_askpass_script_outputs_password(self, git_tools):
+        """Test that askpass script outputs password when prompted."""
+        import subprocess
+
+        username = "test_user"
+        password = "ghp_test_token_secret"
+
+        async with git_tools._create_askpass_script(username, password) as script_path:
+            # Simulate git asking for password
+            result = subprocess.run(
+                ["sh", script_path, "Password for 'https://github.com':"],
+                capture_output=True,
+                text=True
+            )
+            assert result.stdout.strip() == password
+
+    @pytest.mark.asyncio
+    async def test_askpass_cleanup_on_exception(self, git_tools):
+        """Test that askpass script is cleaned up even if an exception occurs."""
+        username = "test_user"
+        password = "test_token"
+
+        script_path = None
+        try:
+            async with git_tools._create_askpass_script(username, password) as path:
+                script_path = path
+                raise RuntimeError("Simulated error during git operation")
+        except RuntimeError:
+            pass
+
+        # Verify script is still cleaned up despite the exception
+        assert not os.path.exists(script_path), "Askpass script should be deleted even on exception"
+
+    @pytest.mark.asyncio
+    async def test_push_with_auth_credentials(self, git_tools, git_repo):
+        """Test that push accepts auth credentials (doesn't actually push without remote)."""
+        # This test verifies the parameter passing works
+        # We can't test actual push without a real remote
+        import inspect
+        sig = inspect.signature(git_tools.push)
+        params = sig.parameters
+
+        assert "auth_username" in params
+        assert "auth_password" in params
+        assert params["auth_username"].default is None
+        assert params["auth_password"].default is None
+
+    @pytest.mark.asyncio
+    async def test_pull_with_auth_credentials(self, git_tools, git_repo):
+        """Test that pull accepts auth credentials."""
+        import inspect
+        sig = inspect.signature(git_tools.pull)
+        params = sig.parameters
+
+        assert "auth_username" in params
+        assert "auth_password" in params
+        assert params["auth_username"].default is None
+        assert params["auth_password"].default is None

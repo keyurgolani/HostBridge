@@ -32,7 +32,8 @@ Built-in admin dashboard provides human oversight, HITL (Human-in-the-Loop) appr
   - Status, log, diff, show, branches, remotes
   - Commit, push, pull, checkout, stash operations
   - HITL approval for write operations
-  - Support for authentication via environment variables
+  - Git credential support with `{{secret:KEY}}` templates for authenticated push/pull
+  - Secure GIT_ASKPASS implementation with ephemeral scripts
 - **Docker Tools:** Container management and monitoring
   - List containers with filtering (running, stopped, by name/status)
   - Inspect container details (config, network, mounts, state)
@@ -61,11 +62,19 @@ Built-in admin dashboard provides human oversight, HITL (Human-in-the-Loop) appr
 
 - **Tool Explorer:** Browse and inspect all available tools with their JSON schemas
 - **Configuration Viewer:** View current server configuration and HTTP settings
+- **Secrets Management:** View loaded secret keys and trigger hot reload from the UI
 - **Enhanced System Health:** Real-time CPU, memory, database, and workspace metrics
 - **Audit Log Export:** Export filtered logs as JSON or CSV
+- **Real-time Audit Stream:** WebSocket endpoint for live audit event streaming
 - **Browser Notifications:** Desktop alerts for HITL approval requests
 - **Container Log Viewer:** View logs from Docker containers in admin UI
 - **Mobile Responsive:** Full responsive design for all device sizes
+
+### ✅ MCP Protocol Improvements
+
+- **Tool Parity:** All tools (including Docker) are now exposed via MCP with OpenAPI parity
+- **Scope Restriction:** MCP only exposes tool endpoints, excluding admin/auth/system routes
+- **Regression Tests:** Automated tests verify MCP and OpenAPI tool lists match
 
 ---
 

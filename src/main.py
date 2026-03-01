@@ -982,6 +982,97 @@ async def websocket_hitl(websocket: WebSocket):
         connection_manager.disconnect(websocket)
 
 
+@app.websocket("/ws/logs")
+async def websocket_logs(websocket: WebSocket):
+    """WebSocket endpoint for streaming audit log events.
+
+    Provides real-time updates for tool executions, errors, and HITL decisions.
+    Clients can filter events by category, status, etc.
+    """
+    await websocket.accept()
+    from src.admin_api import increment_ws_connections, decrement_ws_connections
+    increment_ws_connections()
+
+    try:
+        # Send recent audit log entries on connect
+        recent_logs = await audit_logger.get_logs(limit=10)
+        await websocket.send_json({
+            "type": "initial_logs",
+            "data": recent_logs,
+        })
+
+        # Listen for client commands
+        last_timestamp = None
+        while True:
+            data = await websocket.receive_json()
+
+            if data.get("type") == "subscribe":
+                # Client wants to subscribe to new log events
+                # For now, we poll for new logs periodically
+                # In a production system, this would use a pub/sub mechanism
+                poll_interval = data.get("poll_interval", 2)  # seconds
+
+                while True:
+                    try:
+                        # Check for new logs
+                        new_logs = await audit_logger.get_logs(limit=50)
+
+                        if new_logs:
+                            # Filter to only new logs since last check
+                            if last_timestamp:
+                                filtered_logs = [
+                                    log for log in new_logs
+                                    if log.get("timestamp", "") > last_timestamp
+                                ]
+                            else:
+                                filtered_logs = new_logs
+
+                            if filtered_logs:
+                                await websocket.send_json({
+                                    "type": "new_logs",
+                                    "data": filtered_logs,
+                                })
+                                last_timestamp = filtered_logs[0].get("timestamp")
+
+                        # Wait for next poll
+                        await asyncio.sleep(poll_interval)
+
+                    except WebSocketDisconnect:
+                        raise
+                    except Exception as e:
+                        logger.error("log_stream_error", error=str(e))
+                        await websocket.send_json({
+                            "type": "error",
+                            "data": {"message": str(e)},
+                        })
+                        break
+
+            elif data.get("type") == "get_logs":
+                # Client requests specific logs
+                limit = data.get("limit", 50)
+                category = data.get("category")
+                status = data.get("status")
+
+                logs = await audit_logger.get_logs(limit=limit)
+                # Filter if needed
+                if category:
+                    logs = [l for l in logs if l.get("tool_category") == category]
+                if status:
+                    logs = [l for l in logs if l.get("status") == status]
+
+                await websocket.send_json({
+                    "type": "logs",
+                    "data": logs,
+                })
+
+    except WebSocketDisconnect:
+        logger.info("logs_websocket_disconnected")
+    except Exception as e:
+        logger.error("logs_websocket_error", error=str(e), exc_info=True)
+    finally:
+        decrement_ws_connections()
+
+
 # fs_write endpoints
 @app.post(
     "/api/tools/fs/write",
@@ -1612,16 +1703,21 @@ Set GIT_ASKPASS environment variable to use stored credentials.""",
 )
 async def git_push_root(request: GitPushRequest) -> GitPushResponse:
     """Push to git remote (root endpoint)."""
+    # Resolve {{secret:KEY}} templates for credentials
+    resolved = resolve_request_secrets(request)
     return await execute_tool(
         "git",
         "push",
-        request.model_dump(),
+        request.model_dump(),  # Original params for audit (templates, not resolved)
         lambda: git_tools.push(
-            repo_path=request.repo_path,
-            remote=request.remote,
-            branch=request.branch,
-            force=request.force,
-            workspace_dir=request.workspace_dir,
+            repo_path=resolved.repo_path,
+            remote=resolved.remote,
+            branch=resolved.branch,
+            force=resolved.force,
+            workspace_dir=resolved.workspace_dir,
+            auth_username=resolved.auth_username,
+            auth_password=resolved.auth_password,
+            auth_env=resolved.auth_env,
         ),
         force_hitl=True,
         hitl_reason="Git push requires approval",
@@ -1650,16 +1746,21 @@ Set GIT_ASKPASS environment variable to use stored credentials.""",
 )
 async def git_push_sub(request: GitPushRequest) -> GitPushResponse:
     """Push to git remote (sub-app endpoint)."""
+    # Resolve {{secret:KEY}} templates for credentials
+    resolved = resolve_request_secrets(request)
     return await execute_tool(
         "git",
         "push",
-        request.model_dump(),
+        request.model_dump(),  # Original params for audit (templates, not resolved)
         lambda: git_tools.push(
-            repo_path=request.repo_path,
-            remote=request.remote,
-            branch=request.branch,
-            force=request.force,
-            workspace_dir=request.workspace_dir,
+            repo_path=resolved.repo_path,
+            remote=resolved.remote,
+            branch=resolved.branch,
+            force=resolved.force,
+            workspace_dir=resolved.workspace_dir,
+            auth_username=resolved.auth_username,
+            auth_password=resolved.auth_password,
+            auth_env=resolved.auth_env,
         ),
         force_hitl=True,
         hitl_reason="Git push requires approval",
@@ -1683,17 +1784,24 @@ Use {{secret:KEY}} syntax for git credentials in environment variables.""",
 )
 async def git_pull_root(request: GitPullRequest) -> GitPullResponse:
     """Pull from git remote (root endpoint)."""
+    # Resolve {{secret:KEY}} templates for credentials
+    resolved = resolve_request_secrets(request)
     return await execute_tool(
         "git",
         "pull",
-        request.model_dump(),
+        request.model_dump(),  # Original params for audit (templates, not resolved)
         lambda: git_tools.pull(
-            repo_path=request.repo_path,
-            remote=request.remote,
-            branch=request.branch,
-            rebase=request.rebase,
-            workspace_dir=request.workspace_dir,
+            repo_path=resolved.repo_path,
+            remote=resolved.remote,
+            branch=resolved.branch,
+            rebase=resolved.rebase,
+            workspace_dir=resolved.workspace_dir,
+            auth_username=resolved.auth_username,
+            auth_password=resolved.auth_password,
+            auth_env=resolved.auth_env,
         ),
+        force_hitl=True,
+        hitl_reason="Git pull requires approval (can modify local files)",
     )
 
 
@@ -1714,17 +1822,24 @@ Use {{secret:KEY}} syntax for git credentials in environment variables.""",
 )
 async def git_pull_sub(request: GitPullRequest) -> GitPullResponse:
     """Pull from git remote (sub-app endpoint)."""
+    # Resolve {{secret:KEY}} templates for credentials
+    resolved = resolve_request_secrets(request)
     return await execute_tool(
         "git",
         "pull",
-        request.model_dump(),
+        request.model_dump(),  # Original params for audit (templates, not resolved)
         lambda: git_tools.pull(
-            repo_path=request.repo_path,
-            remote=request.remote,
-            branch=request.branch,
-            rebase=request.rebase,
-            workspace_dir=request.workspace_dir,
+            repo_path=resolved.repo_path,
+            remote=resolved.remote,
+            branch=resolved.branch,
+            rebase=resolved.rebase,
+            workspace_dir=resolved.workspace_dir,
+            auth_username=resolved.auth_username,
+            auth_password=resolved.auth_password,
+            auth_env=resolved.auth_env,
         ),
+        force_hitl=True,
+        hitl_reason="Git pull requires approval (can modify local files)",
     )
 
 
@@ -1946,6 +2061,11 @@ Use this tool to temporarily save work in progress.""",
 )
 async def git_stash_root(request: GitStashRequest) -> GitStashResponse:
     """Git stash operations (root endpoint)."""
+    # Destructive stash operations (pop/drop) require HITL
+    destructive_actions = {"pop", "drop"}
+    force_hitl = request.action in destructive_actions
+    hitl_reason = f"Git stash {request.action} requires approval (modifies stash stack)" if force_hitl else None
+
     return await execute_tool(
         "git",
         "stash",
@@ -1957,6 +2077,8 @@ async def git_stash_root(request: GitStashRequest) -> GitStashResponse:
             index=request.index,
             workspace_dir=request.workspace_dir,
         ),
+        force_hitl=force_hitl,
+        hitl_reason=hitl_reason,
     )
 
 
@@ -2820,24 +2942,6 @@ async def plan_cancel_sub(request: PlanCancelRequest) -> PlanCancelResponse:
     )
 
 
-# Initialize and mount MCP server using Streamable HTTP transport (recommended)
-# IMPORTANT: This must be done AFTER all endpoints are defined, as fastapi-mcp
-# discovers tools at mount time
-mcp = FastApiMCP(app)
-mcp.mount_http()
-logger.info("mcp_server_mounted", path="/mcp", transport="streamable_http")
-
-# Mount sub-apps
-app.mount("/tools/fs", fs_app)
-app.mount("/tools/workspace", workspace_app)
-app.mount("/tools/shell", shell_app)
-app.mount("/tools/git", git_app)
-app.mount("/tools/docker", docker_app)
-app.mount("/tools/http", http_app)
-app.mount("/tools/memory", memory_app)
-app.mount("/tools/plan", plan_app)
-
-
 # ============================================================================
 # Docker Tools
 # ============================================================================
@@ -3089,3 +3193,32 @@ async def docker_action_sub(request: DockerActionRequest) -> DockerActionRespons
         force_hitl=True,
         hitl_reason=f"Container action '{request.action}' on '{request.container}' requires approval",
     )
+
+
+# ============================================================================
+# Mount Sub-apps (must be done before MCP mount)
+# ============================================================================
+
+app.mount("/tools/fs", fs_app)
+app.mount("/tools/workspace", workspace_app)
+app.mount("/tools/shell", shell_app)
+app.mount("/tools/git", git_app)
+app.mount("/tools/docker", docker_app)
+app.mount("/tools/http", http_app)
+app.mount("/tools/memory", memory_app)
+app.mount("/tools/plan", plan_app)
+
+
+# ============================================================================
+# Initialize and mount MCP server (MUST be done AFTER all endpoints are defined)
+# ============================================================================
+
+# Restrict MCP to tool routes only by including only tool tags
+# Tool endpoints use tags: filesystem, workspace, shell, git, docker, http, memory, plan
+# This explicitly excludes admin/auth/system routes (health, admin SPA, etc.)
+mcp = FastApiMCP(
+    app,
+    include_tags=["filesystem", "workspace", "shell", "git", "docker", "http", "memory", "plan"],
+)
+mcp.mount_http()
+logger.info("mcp_server_mounted", path="/mcp", transport="streamable_http", included_tags=["filesystem", "workspace", "shell", "git", "docker", "http", "memory", "plan"])

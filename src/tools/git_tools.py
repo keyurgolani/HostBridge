@@ -3,8 +3,11 @@
 import os
 import asyncio
 import re
+import tempfile
+import stat
 from typing import Optional
 from datetime import datetime
+from contextlib import asynccontextmanager
 
 from src.workspace import WorkspaceManager, SecurityError
 from src.logging_config import get_logger
@@ -14,15 +17,60 @@ logger = get_logger(__name__)
 
 class GitTools:
     """Git repository management tools."""
-    
+
     def __init__(self, workspace: WorkspaceManager):
         """Initialize git tools.
-        
+
         Args:
             workspace: Workspace manager instance
         """
         self.workspace = workspace
-    
+
+    @asynccontextmanager
+    async def _create_askpass_script(self, username: str, password: str):
+        """Create an ephemeral GIT_ASKPASS script for authentication.
+
+        The script outputs credentials when git requests them.
+        It is automatically deleted after use.
+
+        Args:
+            username: Git username
+            password: Git password/token
+
+        Yields:
+            Path to the askpass script
+        """
+        # Create a temporary script file
+        fd, script_path = tempfile.mkstemp(suffix='.sh', prefix='git_askpass_')
+
+        try:
+            # Write the askpass script
+            # Git calls this script with a prompt argument; we return the password
+            script_content = f'''#!/bin/sh
+# Ephemeral GIT_ASKPASS script - automatically deleted after use
+if echo "$1" | grep -qi "username"; then
+    echo '{username}'
+else
+    echo '{password}'
+fi
+'''
+            with os.fdopen(fd, 'w') as f:
+                f.write(script_content)
+
+            # Make the script executable
+            os.chmod(script_path, stat.S_IRUSR | stat.S_IXUSR)
+
+            logger.debug("askpass_script_created", path=script_path)
+            yield script_path
+
+        finally:
+            # Clean up the script file
+            try:
+                os.unlink(script_path)
+                logger.debug("askpass_script_cleaned", path=script_path)
+            except OSError as e:
+                logger.warning("askpass_script_cleanup_failed", path=script_path, error=str(e))
+
     async def _run_git_command(
         self,
         args: list[str],
@@ -32,43 +80,43 @@ class GitTools:
         timeout: int = 60,
     ) -> tuple[str, str, int]:
         """Run a git command in the specified repository.
-        
+
         Args:
             args: Git command arguments (without 'git' prefix)
             repo_path: Repository path relative to workspace
             workspace_dir: Optional workspace directory override
             env: Optional environment variables
             timeout: Command timeout in seconds
-            
+
         Returns:
             Tuple of (stdout, stderr, exit_code)
-            
+
         Raises:
             SecurityError: If path is outside workspace
             FileNotFoundError: If repository doesn't exist
         """
         # Resolve repository path
         resolved_path = self.workspace.resolve_path(repo_path, workspace_dir)
-        
+
         # Check if path exists
         if not os.path.exists(resolved_path):
             raise FileNotFoundError(f"Repository path does not exist: {repo_path}")
-        
+
         # Check if it's a git repository
         git_dir = os.path.join(resolved_path, ".git")
         if not os.path.exists(git_dir) and args[0] not in ("init", "clone"):
             raise ValueError(f"Not a git repository: {repo_path}")
-        
+
         # Build command
         cmd = ["git", "-C", resolved_path] + args
-        
+
         # Prepare environment
         exec_env = os.environ.copy()
         if env:
             exec_env.update(env)
-        
+
         logger.info("executing_git_command", command=" ".join(cmd), repo_path=resolved_path)
-        
+
         try:
             # Execute command
             process = await asyncio.create_subprocess_exec(
@@ -77,26 +125,26 @@ class GitTools:
                 stderr=asyncio.subprocess.PIPE,
                 env=exec_env,
             )
-            
+
             # Wait for completion with timeout
             stdout_bytes, stderr_bytes = await asyncio.wait_for(
                 process.communicate(),
                 timeout=timeout,
             )
-            
+
             stdout = stdout_bytes.decode("utf-8", errors="replace")
             stderr = stderr_bytes.decode("utf-8", errors="replace")
             exit_code = process.returncode or 0
-            
+
             logger.info(
                 "git_command_completed",
                 exit_code=exit_code,
                 stdout_lines=len(stdout.splitlines()),
                 stderr_lines=len(stderr.splitlines()),
             )
-            
+
             return stdout, stderr, exit_code
-            
+
         except asyncio.TimeoutError:
             logger.error("git_command_timeout", timeout=timeout)
             try:
@@ -433,9 +481,11 @@ class GitTools:
         force: bool = False,
         workspace_dir: Optional[str] = None,
         env: Optional[dict[str, str]] = None,
+        auth_username: Optional[str] = None,
+        auth_password: Optional[str] = None,
     ) -> dict:
         """Push to remote.
-        
+
         Args:
             repo_path: Repository path relative to workspace
             remote: Remote name
@@ -443,7 +493,9 @@ class GitTools:
             force: Force push
             workspace_dir: Optional workspace directory override
             env: Optional environment variables (for credentials)
-            
+            auth_username: Git username for authentication
+            auth_password: Git password/token for authentication
+
         Returns:
             Dictionary with push information
         """
@@ -455,23 +507,38 @@ class GitTools:
                 workspace_dir,
             )
             branch = stdout.strip()
-        
+
         # Build push command
         args = ["push", remote, branch]
         if force:
             args.append("--force")
-        
-        # Execute push
-        stdout, stderr, exit_code = await self._run_git_command(
-            args,
-            repo_path,
-            workspace_dir,
-            env=env,
-        )
-        
+
+        # Prepare environment with optional auth
+        exec_env = env.copy() if env else {}
+
+        # Use GIT_ASKPASS for authentication if credentials provided
+        if auth_username and auth_password:
+            async with self._create_askpass_script(auth_username, auth_password) as askpass_path:
+                exec_env["GIT_ASKPASS"] = askpass_path
+
+                stdout, stderr, exit_code = await self._run_git_command(
+                    args,
+                    repo_path,
+                    workspace_dir,
+                    env=exec_env,
+                )
+        else:
+            # Execute without askpass
+            stdout, stderr, exit_code = await self._run_git_command(
+                args,
+                repo_path,
+                workspace_dir,
+                env=exec_env,
+            )
+
         if exit_code != 0:
             raise RuntimeError(f"Git push failed: {stderr}")
-        
+
         # Count commits pushed (rough estimate from output)
         commits_pushed = 0
         for line in (stdout + stderr).splitlines():
@@ -479,7 +546,7 @@ class GitTools:
                 match = re.search(r"(\w+)\.\.(\w+)", line)
                 if match:
                     commits_pushed = 1  # At least one commit
-        
+
         return {
             "remote": remote,
             "branch": branch,
@@ -495,9 +562,11 @@ class GitTools:
         rebase: bool = False,
         workspace_dir: Optional[str] = None,
         env: Optional[dict[str, str]] = None,
+        auth_username: Optional[str] = None,
+        auth_password: Optional[str] = None,
     ) -> dict:
         """Pull from remote.
-        
+
         Args:
             repo_path: Repository path relative to workspace
             remote: Remote name
@@ -505,7 +574,9 @@ class GitTools:
             rebase: Use rebase instead of merge
             workspace_dir: Optional workspace directory override
             env: Optional environment variables (for credentials)
-            
+            auth_username: Git username for authentication
+            auth_password: Git password/token for authentication
+
         Returns:
             Dictionary with pull information
         """
@@ -516,23 +587,38 @@ class GitTools:
         args.append(remote)
         if branch:
             args.append(branch)
-        
-        # Execute pull
-        stdout, stderr, exit_code = await self._run_git_command(
-            args,
-            repo_path,
-            workspace_dir,
-            env=env,
-        )
-        
+
+        # Prepare environment with optional auth
+        exec_env = env.copy() if env else {}
+
+        # Use GIT_ASKPASS for authentication if credentials provided
+        if auth_username and auth_password:
+            async with self._create_askpass_script(auth_username, auth_password) as askpass_path:
+                exec_env["GIT_ASKPASS"] = askpass_path
+
+                stdout, stderr, exit_code = await self._run_git_command(
+                    args,
+                    repo_path,
+                    workspace_dir,
+                    env=exec_env,
+                )
+        else:
+            # Execute without askpass
+            stdout, stderr, exit_code = await self._run_git_command(
+                args,
+                repo_path,
+                workspace_dir,
+                env=exec_env,
+            )
+
         if exit_code != 0:
             raise RuntimeError(f"Git pull failed: {stderr}")
-        
+
         # Parse output
         updated = "Already up to date" not in stdout
         commits_received = 0
         files_changed = []
-        
+
         for line in (stdout + stderr).splitlines():
             if "file changed" in line or "files changed" in line:
                 match = re.search(r"(\d+) file", line)
@@ -544,7 +630,7 @@ class GitTools:
                     file_path = parts[0].strip()
                     if file_path:
                         files_changed.append(file_path)
-        
+
         return {
             "updated": updated,
             "commits_received": commits_received,
